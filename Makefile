@@ -7,8 +7,10 @@ OS := $(shell uname)
 ifeq ($(OS),Darwin)
 DOCKER_COMPOSE_FILE=-f docker-compose.yml -f docker-compose-mac.yml
 else
-DOCKER_COMPOSE_FILE=-f docker-compose.yml
+DOCKER_COMPOSE_FILE=-f docker-compose.yml -f docker-compose.override.yml
 endif
+
+NPM=docker-compose -f docker-compose-dev.yml run --rm node npm
 
 get_ip_addr = `$(DOCKER_COMPOSE) ps -q $(1) | xargs docker inspect -f '{{.NetworkSettings.Networks.tuleap_default.IPAddress}}'`
 
@@ -19,7 +21,7 @@ DOCKER_COMPOSE=$(SUDO) docker-compose $(DOCKER_COMPOSE_FILE)
 ifeq ($(MODE),Prod)
 COMPOSER_INSTALL=composer --quiet install --classmap-authoritative --no-dev --no-interaction --no-scripts --prefer-dist
 else
-COMPOSER_INSTALL=composer --quiet install --prefer-dist
+COMPOSER_INSTALL=composer --quiet install --prefer-dist --ignore-platform-reqs
 endif
 
 PHP=php
@@ -113,8 +115,8 @@ post-checkout-reload-env: dev-clear-cache dev-forgeupgrade restart-services ## C
 post-checkout: post-checkout-build post-checkout-reload-env ## Clear caches, run forgeupgrade, build assets and generate language files
 
 npm-build:
-	npm install
-	npm run build
+	$(NPM) install
+	$(NPM) run build
 
 redeploy-nginx: ## Redeploy nginx configuration
 	@$(DOCKER_COMPOSE) exec web /usr/share/tuleap/tools/utils/php73/run.php --module=nginx
@@ -261,11 +263,11 @@ deptrac: ## Execute deptrac. Use CONFIG to choose the configuration file to eval
 
 eslint: ## Execute eslint. Use FILES parameter to execute on specific file or directory.
 	$(eval FILES ?= .)
-	@npm run eslint -- --quiet $(FILES)
+	@(NPM) run eslint -- --quiet $(FILES)
 
 eslint-fix: ## Execute eslint with --fix to try to fix problems automatically. Use FILES parameter to execute on specific file or directory.
 	$(eval FILES ?= .)
-	@npm run eslint -- --fix --quiet $(FILES)
+	@$(NPM) run eslint -- --fix --quiet $(FILES)
 
 bash-web: ## Give a bash on web container
 	@docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -ti `docker-compose ps -q web` bash

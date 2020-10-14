@@ -1,0 +1,23 @@
+.PHONY: first-start
+first-start: prepare-backend prepare-fronted dev-setup start post-checkout
+
+.PHONY: prepare-backend
+prepare-backend:
+	make composer
+
+.PHONY: prepare-fronted
+prepare-frontend:
+	docker-compose -f docker-compose-dev.yml run --rm node npm install
+	docker-compose -f docker-compose-dev.yml run --rm node npm run build
+
+.PHONY: dev-setup
+dev-setup:
+	make dev-setup
+
+.PHONY: start
+start:
+	make start
+
+.PHONY: post-checkout
+post-checkout:
+	make post-checkout

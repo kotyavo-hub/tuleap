@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  app:
+    image: laradock/workspace:latest-7.2
+    working_dir: /app
+    env_file:
+      - ../.env
+      - .env
+    environment:
+      DHOST: ${DHOST}
+    volumes:
+      - .:/app

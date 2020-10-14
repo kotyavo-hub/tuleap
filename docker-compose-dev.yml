@@ -1,0 +1,8 @@
+version: '2'
+
+services:
+  node:
+    image: node:12
+    working_dir: /home/node/app
+    volumes:
+      - .:/home/node/app
