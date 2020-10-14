@@ -21,4 +21,4 @@ prepare:
 
 .PHONY: import
 import:
-	DHOST=$(DHOST) docker-compose run --rm app php ./bin/import.php
+	DHOST=$(DHOST) docker-compose run --rm app php ./bin/import.php $(with)
