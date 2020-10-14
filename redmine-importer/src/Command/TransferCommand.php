@@ -5,6 +5,7 @@ namespace Maximaster\RedmineTuleapImporter\Command;
 use Exception;
 use Maximaster\RedmineTuleapImporter\Database\Connection;
 use Maximaster\RedmineTuleapImporter\Framework\GenericTransferCommand;
+use MysqliDb;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -21,9 +22,9 @@ class TransferCommand extends GenericTransferCommand
         return 'app:transfer';
     }
 
-    public function __construct(string $contentDirectory, Connection $connection)
+    public function __construct(string $contentDirectory, MysqliDb $db)
     {
-        parent::__construct($connection);
+        parent::__construct($db);
 
         $this->contentDirectory = $contentDirectory;
     }
@@ -72,15 +73,15 @@ class TransferCommand extends GenericTransferCommand
             // с запасом относительно максимального размера файла
             $packageSize = 4 * max(32 * 1024 * 1024, $maxFileSize);
             $ss->note(sprintf('Устанавливаем размер MySQL пакета данных: %d', $packageSize));
-            $this->connection->query(sprintf('SET GLOBAL max_allowed_packet=%d;', $packageSize));
+            $this->db->query(sprintf('SET GLOBAL max_allowed_packet=%d;', $packageSize));
         }
 
         foreach ($sqlImportQueue as $importItem) {
             $ss->note(sprintf('Производим импорт для БД %s файла %s', $importItem['database'], basename($importItem['file'])));
 
             try {
-                $this->connection->useDatabase($importItem['database']);
-                $this->connection->importDump(file_get_contents($importItem['file']));
+                $this->db->useDatabase($importItem['database']);
+                $this->db->importDump(file_get_contents($importItem['file']));
             } catch (Exception $e) {
                 $ss->error($e->getMessage());
                 return -1;

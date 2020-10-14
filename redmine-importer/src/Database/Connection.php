@@ -43,6 +43,7 @@ class Connection
             throw new QueryException(sprintf('Не удалось выполнить запрос "%s"', $query));
         }
 
+
         return $result;
     }
 

@@ -2,6 +2,7 @@
   "require": {
     "ext-mysqli": "*",
     "guzzlehttp/guzzle": "^7.0",
+    "thingengineer/mysqli-database-class": "^2.9.3",
     "symfony/console": "^5.1"
   },
   "autoload": {
