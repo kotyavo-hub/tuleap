@@ -19,6 +19,10 @@ dump-tuleap-db:
 prepare:
 	docker-compose run --rm app composer install
 
+.PHONY: update
+update:
+	docker-compose run --rm app composer update
+
 .PHONY: transfer
 transfer:
 	DHOST=$(DHOST) docker-compose run --rm app php ./bin/transfer.php $(with)

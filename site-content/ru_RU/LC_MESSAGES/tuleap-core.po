@@ -1,0 +1,2 @@
+msgid "Keys & tokens"
+msgstr "Ключи и токены"

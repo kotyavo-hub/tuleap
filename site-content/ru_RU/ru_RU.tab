@@ -1,0 +1,94 @@
+system	locale	ru_RU
+system	locale_label	Russian
+system	strftimefmt	%Y %B %e  %H:%M
+system	strfdatefmt	%B %e, %Y
+system	strfdateshortfmt	%b %e, %Y
+system	datefmt	Y-m-d H:i
+system	datefmt_full	Y-m-d H:i:s
+system	datefmt_time	Y-m-d H:i
+system	datefmt_short	Y-m-d
+system	datefmt_day_and_month	M d
+system	decimal_separator	.
+system	thousand_separator	,
+conf	content_encoding	utf-8
+conf	default_font	verdana,arial,helvetica,sans-serif
+conf	language_code	ru
+conf	language_id	ru_RU
+global	perm_denied	Доступ запрещён
+global	error_perm_denied	Ошибка - Доступ запрещён
+global	back_home	Вернуться на домашнюю страницу
+global	back	Назад
+global	btn_apply	Применить
+global	btn_delete	Удалить
+global	btn_cancel	Отменить
+global	btn_update	Обновить
+global	btn_submit	Отправить
+global	btn_search	Поиск
+global	btn_submit_and_continue	Сохранить и выйти
+global	btn_submit_and_stay	Сохранить и остаться
+global	btn_browse	Просмотреть
+global	btn_create	Создать
+global	btn_preview	Предпросмотр
+global	btn_close	Закрыть
+global	btn_reset	Сбросить
+global	btn_edit	Редактировать
+global	btn_restrict	Ограничить
+global	search_title	Поиск
+global	save_change	Сохранение изменения
+global	reset	Сбросить
+global	delete	Удалить
+global	add	Добавить
+global	total	Всего
+global	warning	Предупреждение!
+global	yes	Да
+global	no	Нет
+global	on	Вкл.
+global	off	Выкл.
+global	any	Любой
+global	none	Ничего
+global	please_choose_dashed	-- Пожалуйста, выберите
+global	begin	Begin
+global	end	End
+global	next	Next
+global	prev	Previous
+global	of	of
+global	printer_version	Printer version
+global	error	Error
+global	help	Help
+global	by	By
+global	select	Select
+global	unchanged	Unchanged
+global	or	or
+global	and	and
+global	more	more
+global	activate	activate
+global	deactivate	deactivate
+global	Project	Project
+global	System	System
+global	Admin	Admin
+global	Administration	Administration
+global	Settings	Settings
+global	Personal	Personal
+global	default	Default
+global	no_mail_for_account	No email address for this account.
+global	mail_failed	The mail was not accepted for the delivery. Please contact the administrator. His email address is: $1.
+global	open	Open
+global	closed	Closed
+global	status	Status
+global	return_to	<p>Requested page currently loading. If it does not, try <a href="$1">$1</a>.</p>
+global	at_the_beginning	At the beginning
+global	at_the_end	At the end
+global	after	After $1
+global	missing_parameters	Missing parameters
+global	error_upload	File upload error. Please try again.
+global	error_upload_nofile	File upload error($1). No file was uploaded.
+global	error_upload_partial	File upload error($1). The uploaded file was only partially uploaded.
+global	error_upload_size	File upload error($1). The uploaded file exceeds the maximum allowed file size.
+global	error_upload_unknown	File upload error($1). Unknown error code.
+global	service_conf_not_inherited	The configuration of this service will not be inherited for sub-projects
+global	pick_date	Pick up a date
+global	show_frame	Show only this frame
+global	null	NULL
+global	error_synchronizertoken	Your request doesn't appear to be valid. Please retry.
+global	settings	Settings
+global	usage	Usage
