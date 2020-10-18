@@ -15,6 +15,11 @@ dump-tuleap-db:
 	cd ../ && docker-compose exec db mysqldump -q -uroot -p$(MYSQL_ROOT_PASSWORD) tuleap 2>/dev/null > $(PWD)/$(to)
 	sed -i '1d' $(to)
 
+.PHONY: dump-dbs
+dump-dbs:
+	make dump-redmine-db to=redmine.sql
+	make dump-tuleap-db to=tuleap.sql
+
 .PHONY: prepare
 prepare:
 	docker-compose run --rm app composer install

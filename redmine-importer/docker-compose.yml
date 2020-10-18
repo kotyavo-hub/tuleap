@@ -6,7 +6,6 @@ services:
     working_dir: /app
     env_file:
       - ../.env
-      - .env
     environment:
       DHOST: ${DHOST}
     volumes:

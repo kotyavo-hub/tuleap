@@ -2,7 +2,7 @@
 
 namespace Maximaster\RedmineTuleapImporter\Command;
 
-use Maximaster\RedmineTuleapImporter\Enum\DatabaseEnum;
+use Exception;
 use Maximaster\RedmineTuleapImporter\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\RedmineTuleapImporter\Enum\RedmineCustomValueColumnEnum;
 use Maximaster\RedmineTuleapImporter\Enum\RedmineEmailAddressColumnEnum;
@@ -11,7 +11,9 @@ use Maximaster\RedmineTuleapImporter\Enum\RedmineTableEnum;
 use Maximaster\RedmineTuleapImporter\Enum\RedmineUserColumnEnum;
 use Maximaster\RedmineTuleapImporter\Enum\RedmineUserStatusEnum;
 use Maximaster\RedmineTuleapImporter\Enum\TuleapTableEnum;
+use Maximaster\RedmineTuleapImporter\Enum\TuleapUserAccessColumnEnum;
 use Maximaster\RedmineTuleapImporter\Enum\TuleapUserColumnEnum;
+use Maximaster\RedmineTuleapImporter\Enum\TuleapUserGroupColumnEnum;
 use Maximaster\RedmineTuleapImporter\Enum\TuleapUserStatusEnum;
 use Maximaster\RedmineTuleapImporter\Framework\GenericTransferCommand;
 use Maximaster\RedmineTuleapImporter\Repository\RedmineCustomFieldRepository;
@@ -29,12 +31,20 @@ class TransferUsersCommand extends GenericTransferCommand
         return 'app:users:transfer';
     }
 
-    public function __construct(MysqliDb $db, RedmineCustomFieldRepository $cfRepo)
+    public function __construct(MysqliDb $redmineDb, MysqliDb $tuleapDb, RedmineCustomFieldRepository $cfRepo)
     {
-        parent::__construct($db);
+        parent::__construct($redmineDb, $tuleapDb);
         $this->cfRepo = $cfRepo;
     }
 
+    /**
+     * @param InputInterface $input
+     * @param SymfonyStyle $output
+     *
+     * @return int
+     *
+     * @throws Exception
+     */
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
     {
         $ss = new SymfonyStyle($input, $output);
@@ -42,8 +52,10 @@ class TransferUsersCommand extends GenericTransferCommand
 
         $cfs = $this->cfRepo->allOfUser(RedmineCustomFieldColumnEnum::NAME);
 
-        $redmineConnection = $this->db->connection(DatabaseEnum::REDMINE);
-        $redmineUsers = $redmineConnection->query('
+        $redmineDb = $this->redmine();
+        $tuleapDb = $this->tuleap();
+
+        $redmineUsers = $redmineDb->query('
             select
                 `user`.' . RedmineUserColumnEnum::ID . ',
                 `user`.' . RedmineUserColumnEnum::LOGIN . ',
@@ -83,7 +95,7 @@ class TransferUsersCommand extends GenericTransferCommand
             RedmineUserStatusEnum::BLOCKED => TuleapUserStatusEnum::SUSPENDED,
         ];
 
-        $this->db->query('alter table `' . TuleapTableEnum::USER . '` add column redmine_id int(11) default NULL');
+        $tuleapDb->query('alter table `' . TuleapTableEnum::USER . '` add column redmine_id int(11) default NULL');
 
         foreach ($redmineUsers as $redmineUser) {
             $redmineUserStatus = $redmineUser[RedmineUserColumnEnum::STATUS];
@@ -97,16 +109,74 @@ class TransferUsersCommand extends GenericTransferCommand
                 TuleapUserColumnEnum::LANGUAGE_ID => 'ru_RU',
             ];
 
-            $existsUser = $this->db
-                ->where(TuleapUserColumnEnum::REDMINE_ID, $tuleapUser[TuleapUserColumnEnum::REDMINE_ID])
+            $redmineUserId = $tuleapUser[TuleapUserColumnEnum::REDMINE_ID];
+
+            $existsUser = $tuleapDb
+                ->where(TuleapUserColumnEnum::REDMINE_ID, $redmineUserId)
                 ->get(TuleapTableEnum::USER, 1, [TuleapUserColumnEnum::USER_ID])[0] ?? null;
 
+            $existsUserByLogin = $tuleapDb
+                ->where(TuleapUserColumnEnum::USER_NAME, $redmineUser[RedmineUserColumnEnum::LOGIN])
+                ->get(TuleapTableEnum::USER, 1, [TuleapUserColumnEnum::USER_ID])[0] ?? null;
+
+            if ($existsUserByLogin) {
+                $tuleapUser[TuleapUserColumnEnum::USER_NAME] = sprintf('redmine_%s', $tuleapUser[TuleapUserColumnEnum::USER_NAME]);
+            }
+
             if ($existsUser) {
-                $this->db
+                $updated = $tuleapDb
                     ->where(TuleapUserColumnEnum::REDMINE_ID, $existsUser[TuleapUserColumnEnum::USER_ID])
                     ->update(TuleapTableEnum::USER, $tuleapUser);
+
+                if (!$updated) {
+                    $output->error(sprintf('Не удалось обновить пользователя %d: %s', $redmineUserId, $tuleapDb->getLastError()));
+                    return -1;
+                }
             } else {
-                $this->db->insert(TuleapTableEnum::USER, $tuleapUser);
+                if (!$tuleapDb->insert(TuleapTableEnum::USER, $tuleapUser)) {
+                    $output->error(sprintf('Не удалось создать пользователя %d: %s', $redmineUserId, $tuleapDb->getLastError()));
+                    return -1;
+                }
+                $existsUser[TuleapUserColumnEnum::USER_ID] = $tuleapDb->getInsertId();
+            }
+
+            $tuleapUserId = $existsUser[TuleapUserColumnEnum::USER_ID];
+
+            // Без меток доступа не работают выборки в админке - пользователи не отображаются
+            $userAccess = $tuleapDb
+                ->where(TuleapUserAccessColumnEnum::USER_ID, $tuleapUserId)
+                ->get(TuleapTableEnum::USER_ACCESS, 1);
+
+            if (!$userAccess) {
+                $userAccessInserted = $tuleapDb->insert(TuleapTableEnum::USER_ACCESS, [
+                    TuleapUserAccessColumnEnum::USER_ID => $tuleapUserId,
+                ]);
+
+                if (!$userAccessInserted) {
+                    $output->error(sprintf('Не удалось создать запись о времени доступа для %d: %s', $redmineUserId, $tuleapDb->getLastError()));
+                    return -1;
+                }
+            }
+
+            if ($redmineUser[RedmineUserColumnEnum::ADMIN]) {
+                $inserted = $tuleapDb->insert(TuleapTableEnum::USER_GROUP, [
+                    TuleapUserGroupColumnEnum::USER_ID => $tuleapUserId,
+                    TuleapUserGroupColumnEnum::ADMIN_FLAGS => 'A',
+                    TuleapUserGroupColumnEnum::BUG_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::FORUM_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::PROJECT_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::PATCH_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::SUPPORT_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::FILE_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::WIKI_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::SVN_FLAGS => 2,
+                    TuleapUserGroupColumnEnum::NEWS_FLAGS => 2,
+                ]);
+
+                if (!$inserted) {
+                    $output->error(sprintf('Не удалось сохранить метку администратора для %d: %s', $tuleapUserId, $tuleapDb->getLastError()));
+                    return -1;
+                }
             }
 
             $progress->advance();

@@ -16,18 +16,17 @@ $connectionParams = [
     'charset' => 'utf8'
 ];
 
-$db = new MysqliDb($connectionParams['host'], $connectionParams['username'], $connectionParams['password'], DatabaseEnum::TULEAP);
-$db->addConnection('redmine', $connectionParams + ['db' => DatabaseEnum::REDMINE]);
-$redmineConnection = $db->connection(DatabaseEnum::REDMINE);
+$redmineDb = new MysqliDb($connectionParams['host'], $connectionParams['username'], $connectionParams['password'], DatabaseEnum::REDMINE);
+$tuleapDb = new MysqliDb($connectionParams['host'], $connectionParams['username'], $connectionParams['password'], DatabaseEnum::TULEAP);
 
-$cfRepo = new RedmineCustomFieldRepository($redmineConnection);
+$cfRepo = new RedmineCustomFieldRepository($redmineDb);
 
 $application = new Application();
 
 $application->addCommands([
-    new TransferCommand(realpath(__DIR__ . '/../'), $db),
-    new TransferUsersCommand($db, $cfRepo),
-    new TransferProjectsCommand($db),
+    new TransferCommand($redmineDb, $tuleapDb, realpath(__DIR__ . '/../')),
+    new TransferUsersCommand($redmineDb, $tuleapDb, $cfRepo),
+    new TransferProjectsCommand($redmineDb, $tuleapDb),
 ]);
 
 $application->setDefaultCommand(TransferCommand::getDefaultName());
