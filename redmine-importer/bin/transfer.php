@@ -6,6 +6,7 @@ use Maximaster\RedmineTuleapImporter\Command\TransferUsersCommand;
 use Maximaster\RedmineTuleapImporter\Enum\DatabaseEnum;
 use Maximaster\RedmineTuleapImporter\Repository\RedmineCustomFieldRepository;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Command\Command;
 
 $composer = require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -23,11 +24,21 @@ $cfRepo = new RedmineCustomFieldRepository($redmineDb);
 
 $application = new Application();
 
-$application->addCommands([
-    new TransferCommand($redmineDb, $tuleapDb, realpath(__DIR__ . '/../')),
+$subTransferCommands = [
     new TransferUsersCommand($redmineDb, $tuleapDb, $cfRepo),
     new TransferProjectsCommand($redmineDb, $tuleapDb),
-]);
+];
+
+$application->addCommands(array_merge([
+    new TransferCommand(
+        $redmineDb,
+        $tuleapDb,
+        realpath(__DIR__ . '/../'),
+        array_map(function (Command $command) {
+            return $command->getName();
+        }, $subTransferCommands)
+    ),
+], $subTransferCommands));
 
 $application->setDefaultCommand(TransferCommand::getDefaultName());
 

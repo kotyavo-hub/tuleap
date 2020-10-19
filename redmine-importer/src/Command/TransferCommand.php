@@ -17,15 +17,25 @@ class TransferCommand extends GenericTransferCommand
     /** @var string */
     private $contentDirectory;
 
+    /** @var string[] */
+    private $subTransfers;
+
     public static function getDefaultName()
     {
         return 'app:transfer';
     }
 
-    public function __construct(MysqliDb $redmineDb, MysqliDb $tuleapDb, string $contentDirectory)
+    /**
+     * @param MysqliDb $redmineDb
+     * @param MysqliDb $tuleapDb
+     * @param string $contentDirectory
+     * @param string[] $subTransfers
+     */
+    public function __construct(MysqliDb $redmineDb, MysqliDb $tuleapDb, string $contentDirectory, array $subTransfers)
     {
         parent::__construct($redmineDb, $tuleapDb);
         $this->contentDirectory = $contentDirectory;
+        $this->subTransfers = $subTransfers;
     }
 
     protected function configure()
@@ -42,6 +52,14 @@ class TransferCommand extends GenericTransferCommand
     {
         $imports = $input->getOption('sql');
         $includedSubtransfers = $input->getOption('include') ?? [];
+
+        foreach ($includedSubtransfers as $includedSubtransfer) {
+            if (strpos($includedSubtransfer, 'app:') !== 0) {
+                foreach (explode(',', $includedSubtransfer) as $includedSubtransferItem) {
+                    $includedSubtransfers[] = sprintf('app:%s:transfer', $includedSubtransferItem);
+                }
+            }
+        }
 
         $sqlImportQueue = [];
         $maxFileSize = 0;
@@ -92,13 +110,8 @@ class TransferCommand extends GenericTransferCommand
             }
         }
 
-        $subTransfers = [
-            TransferUsersCommand::getDefaultName(),
-        ];
-
         $allowAllSubtransfers = in_array('*', $includedSubtransfers);
-
-        foreach ($subTransfers as $subTransfer) {
+        foreach ($this->subTransfers as $subTransfer) {
             if ($allowAllSubtransfers || in_array($subTransfer, $includedSubtransfers)) {
                 $ss->note(sprintf('Запускаем %s', $subTransfer));
                 if ($this->subImport($subTransfer, $ss) !== 0) {

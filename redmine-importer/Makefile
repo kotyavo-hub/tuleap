@@ -31,3 +31,18 @@ update:
 .PHONY: transfer
 transfer:
 	DHOST=$(DHOST) docker-compose run --rm app php ./bin/transfer.php $(with)
+
+.PHONY: partial-transfer
+partial-transfer:
+	make transfer with="--include=$(of)"
+
+.PHONY: reload-redmine-db
+reload-redmine-db:
+	make transfer with="--sql=':schema/redmine.db.sql' --sql='redmine:redmine.sql'"
+
+.PHONY: reload-tuleap-db
+reload-tuleap-db:
+	make transfer with="--sql='tuleap:tuleap.sql'"
+
+.PHONY: reload-db
+reload-db: reload-redmine-db reload-tuleap-db

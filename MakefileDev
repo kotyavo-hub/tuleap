@@ -1,5 +1,10 @@
 .PHONY: first-start
-first-start: prepare-backend prepare-fronted dev-setup start post-checkout
+first-start: wipe-containers prepare-backend prepare-fronted dev-setup start post-checkout
+
+.PHONY: wipe-containers
+wipe-containers:
+	docker-compose rm --stop --force -v
+	docker-compose down --volumes --remove-orphans
 
 .PHONY: prepare-backend
 prepare-backend:
@@ -21,3 +26,7 @@ start:
 .PHONY: post-checkout
 post-checkout:
 	make post-checkout
+
+.PHONY: follow-error-log
+follow-error-log:
+	docker-compose exec web bash -c "tail -F /var/log/tuleap/codendi_syslog"

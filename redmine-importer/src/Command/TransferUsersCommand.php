@@ -99,13 +99,15 @@ class TransferUsersCommand extends GenericTransferCommand
 
         foreach ($redmineUsers as $redmineUser) {
             $redmineUserStatus = $redmineUser[RedmineUserColumnEnum::STATUS];
+            $tuleapSshKeys = $this->prepareTuleapSshKeys($redmineUser[TuleapUserColumnEnum::AUTHORIZED_KEYS]);
+
             $tuleapUser = [
                 TuleapUserColumnEnum::REDMINE_ID => $redmineUser[RedmineUserColumnEnum::ID],
                 TuleapUserColumnEnum::USER_NAME => $redmineUser[RedmineUserColumnEnum::LOGIN],
                 TuleapUserColumnEnum::EMAIL => $redmineUser[TuleapUserColumnEnum::EMAIL],
                 TuleapUserColumnEnum::REALNAME => sprintf('%s %s', $redmineUser[RedmineUserColumnEnum::LASTNAME], $redmineUser[RedmineUserColumnEnum::FIRSTNAME]),
                 TuleapUserColumnEnum::STATUS => $userStatusTranfer[$redmineUserStatus] ?? TuleapUserStatusEnum::PENDING,
-                TuleapUserColumnEnum::AUTHORIZED_KEYS => $redmineUser[TuleapUserColumnEnum::AUTHORIZED_KEYS],
+                TuleapUserColumnEnum::AUTHORIZED_KEYS => $tuleapSshKeys,
                 TuleapUserColumnEnum::LANGUAGE_ID => 'ru_RU',
             ];
 
@@ -183,5 +185,10 @@ class TransferUsersCommand extends GenericTransferCommand
         }
 
         return 0;
+    }
+
+    private function prepareTuleapSshKeys(?string $sshKeys): string
+    {
+        return empty($sshKeys) ? '' : implode('###', explode("\n", $sshKeys));
     }
 }
