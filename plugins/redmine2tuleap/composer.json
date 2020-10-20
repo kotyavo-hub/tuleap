@@ -1,0 +1,15 @@
+{
+  "require": {
+    "ext-mysqli": "*",
+    "guzzlehttp/guzzle": "^7.0",
+    "thingengineer/mysqli-database-class": "^2.9.3",
+    "myclabs/php-enum": "^1.7.6",
+    "symfony/console": "^5.0",
+    "paragonie/easydb": "^2"
+  },
+  "autoload": {
+    "psr-4": {
+      "Maximaster\\Redmine2TuleapPlugin\\": "include/src/"
+    }
+  }
+}

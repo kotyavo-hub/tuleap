@@ -71,3 +71,5 @@ plugins/*/www/assets/*
 plugins/*/www/themes/*/assets/*
 plugins/*/assets
 plugins/themes/*/assets
+
+/*.sql
