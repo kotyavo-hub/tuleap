@@ -56,4 +56,9 @@ class RedmineCustomFieldRepository
     {
         return $this->allOfType(RedmineCustomFieldTypeEnum::USER(), $remapBy);
     }
+
+    public function allOfProject(string $remapBy = null): array
+    {
+        return $this->allOfType(RedmineCustomFieldTypeEnum::PROJECT(), $remapBy);
+    }
 }

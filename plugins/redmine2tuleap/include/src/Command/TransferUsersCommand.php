@@ -3,6 +3,7 @@
 namespace Maximaster\Redmine2TuleapPlugin\Command;
 
 use Exception;
+use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomValueColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineEmailAddressColumnEnum;
@@ -158,6 +159,8 @@ class TransferUsersCommand extends GenericTransferCommand
                     return -1;
                 }
             }
+
+            $this->markAsTransfered(EntityTypeEnum::USER(), (string) $redmineUserId, (string) $tuleapUserId);
 
             $progress->advance();
         }

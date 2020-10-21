@@ -4,6 +4,10 @@ namespace Maximaster\Redmine2TuleapPlugin\Enum;
 
 class TuleapTableEnum
 {
+    // The plugin tables
+    public const PLUGIN_REDMINE2TULEAP_ENTITY_EXTERNAL_ID = 'plugin_redmine2tuleap_entity_external_id';
+
+    // Default tables
     public const CROSS_REFERENCES = 'cross_references';
     public const CVS_BRANCHES = 'cvs_branches';
     public const CVS_CHECKINS = 'cvs_checkins';
@@ -51,14 +55,18 @@ class TuleapTableEnum
     public const GENERIC_USER = 'generic_user';
     public const GROUP_CVS_FULL_HISTORY = 'group_cvs_full_history';
     public const GROUP_CVS_HISTORY = 'group_cvs_history';
+
     public const GROUP_DESC = 'group_desc';
+    public const PROJECT_EXTRA_FIELD = self::GROUP_DESC;
+
     public const GROUP_DESC_VALUE = 'group_desc_value';
+    public const PROJECT_EXTRA_VALUE = self::GROUP_DESC_VALUE;
+
     public const GROUP_HISTORY = 'group_history';
     public const GROUP_SVN_FULL_HISTORY = 'group_svn_full_history';
     public const GROUP_TYPE = 'group_type';
 
     public const GROUPS = 'groups';
-    /** @var string alias */
     public const PROJECTS = self::GROUPS;
 
     public const GROUPS_NOTIF_DELEGATION = 'groups_notif_delegation';

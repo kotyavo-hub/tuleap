@@ -4,6 +4,9 @@ namespace Maximaster\Redmine2TuleapPlugin\Framework;
 
 use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\Redmine2TuleapEntityExternalIdColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTableEnum;
 use ParagonIE\EasyDB\EasyDB;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -73,6 +76,21 @@ abstract class GenericTransferCommand extends Command
         $pdo = $connection->getPdo();
         if ($pdo->exec($sqlBatch) === false) {
             throw new Exception(sprintf('Не удалось провести импорт SQL-пакета "%s": %s', mb_substr($sqlBatch, 0, 100), $pdo->errorInfo()[2]));
+        }
+    }
+
+    public function markAsTransfered(EntityTypeEnum $entityType, string $redmineId, string $tuleapId): void
+    {
+        $tuleapDb = $this->tuleap();
+
+        $marked = $tuleapDb->insert(TuleapTableEnum::PLUGIN_REDMINE2TULEAP_ENTITY_EXTERNAL_ID, [
+            Redmine2TuleapEntityExternalIdColumnEnum::TYPE => $entityType->getValue(),
+            Redmine2TuleapEntityExternalIdColumnEnum::REDMINE_ID => $redmineId,
+            Redmine2TuleapEntityExternalIdColumnEnum::TULEAP_ID => $tuleapId,
+        ]);
+
+        if (!$marked) {
+            throw new Exception(sprintf('%d %d %s', ...$tuleapDb->errorInfo()));
         }
     }
 }

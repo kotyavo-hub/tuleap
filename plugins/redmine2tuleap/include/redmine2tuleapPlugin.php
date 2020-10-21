@@ -67,8 +67,8 @@ class redmine2tuleapPlugin extends Plugin
             TransferUsersCommand::class => function () use ($redmineDb, $tuleapDb, $cfRepo) {
                 return new TransferUsersCommand($redmineDb, $tuleapDb, $cfRepo);
             },
-            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb) {
-                return new TransferProjectsCommand($redmineDb, $tuleapDb);
+            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $cfRepo) {
+                return new TransferProjectsCommand($redmineDb, $tuleapDb, $cfRepo);
             },
         ];
 
