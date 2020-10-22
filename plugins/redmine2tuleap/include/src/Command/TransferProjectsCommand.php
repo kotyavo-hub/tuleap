@@ -91,7 +91,7 @@ class TransferProjectsCommand extends GenericTransferCommand
             $redmineProjectExtraFieldToTuleap[$redmineExtraFieldId] = $tuleapDb->lastInsertId();
         }
 
-        $projectSelect = [
+        $projectSelect = preg_replace('/^/', RedmineTableEnum::PROJECTS . '.', [
             RedmineProjectColumnEnum::ID,
             RedmineProjectColumnEnum::NAME,
             RedmineProjectColumnEnum::DESCRIPTION,
@@ -106,7 +106,7 @@ class TransferProjectsCommand extends GenericTransferCommand
             RedmineProjectColumnEnum::RGT,
             RedmineProjectColumnEnum::INHERIT_MEMBERS,
             RedmineProjectColumnEnum::DEFAULT_ASSIGNEE_ID,
-        ];
+        ]);
 
         $projectSelectQuery = ' FROM ' . RedmineTableEnum::PROJECTS;
 
@@ -131,7 +131,8 @@ class TransferProjectsCommand extends GenericTransferCommand
             );
         }
 
-        $projectSelectQuery .= ' ORDER BY ' . RedmineProjectColumnEnum::ID . ' ASC';
+        $projectSelectQuery .= ' GROUP BY ' . RedmineTableEnum::PROJECTS . '.' .RedmineProjectColumnEnum::ID .
+            ' ORDER BY ' . RedmineTableEnum::PROJECTS . '.' . RedmineProjectColumnEnum::ID . ' ASC';
 
         $projectSelectQuery = 'SELECT ' . implode(', ', $projectSelect) . ' ' . $projectSelectQuery;
 
@@ -144,6 +145,8 @@ class TransferProjectsCommand extends GenericTransferCommand
 
         $redmineProjectCount = count($redmineProjects);
         $output->note(sprintf('Going to import %d project%s', $redmineProjectCount, $redmineProjectCount > 1));
+
+        $progress = $output->createProgressBar($redmineProjectCount);
 
         $projectType = EntityTypeEnum::PROJECT();
 
@@ -163,12 +166,6 @@ class TransferProjectsCommand extends GenericTransferCommand
             }
 
             $tuleapProjectId = $tuleapDb->lastInsertId();
-            try {
-                $this->markAsTransfered($projectType, (string) $redmineProject[RedmineProjectColumnEnum::ID], (string) $tuleapProjectId);
-            } catch (Exception $e) {
-                $output->error(sprintf('Failed to mark %s "%s" as transfered', $projectType->getValue(), $e->getMessage()));
-                return -1;
-            }
 
             foreach ($redmineProjectExtraFieldToTuleap as $redmineCustomFieldId => $tuleapProjectExtraFieldId) {
                 $fieldKey = $this->getProjectExtraFieldValueAlias($tuleapProjectExtraFieldId);
@@ -179,10 +176,19 @@ class TransferProjectsCommand extends GenericTransferCommand
 
                 $tuleapDb->insert(TuleapTableEnum::PROJECT_EXTRA_VALUE, [
                     TuleapProjectExtraValueColumnEnum::GROUP_ID => $tuleapProjectId,
-                    TuleapProjectExtraValueColumnEnum::DESC_VALUE_ID => $tuleapProjectExtraFieldId,
+                    TuleapProjectExtraValueColumnEnum::GROUP_DESC_ID => $tuleapProjectExtraFieldId,
                     TuleapProjectExtraValueColumnEnum::VALUE => $redmineProject[$fieldKey],
                 ]);
             }
+
+            try {
+                $this->markAsTransfered($projectType, (string) $redmineProject[RedmineProjectColumnEnum::ID], (string) $tuleapProjectId);
+            } catch (Exception $e) {
+                $output->error(sprintf('Failed to mark %s "%s" as transfered: %s', $projectType->getValue(), $redmineProject[RedmineProjectColumnEnum::NAME], $e->getMessage()));
+                return -1;
+            }
+
+            $progress->advance();
         }
 
         return 0;

@@ -1,15 +1,21 @@
 # Redmine2Tuleap plugin
 
-Переносит данные из БД Redmine (v3.2.1) в БД Tuleap (v12.0.99.175) прямыми запросами.
+Transfers data from Redmine database (v3.2.1) to Tuleap database (v12.0.99.175) with direct SQL queries
 
-## Переносимые объекты
+## Usage
 
-* Пользователи
-* Проекты
-  * Участники
-    * Группы
-    * Пользователи
-  * Задачи
-    * Комментарии задач
-  * Отчёты
-  * Wiki
+```bash
+cd ./plugins/redmine2tuleap
+make dump-dbs
+```
+
+## Transferable objects
+
+* Users
+* Projects
+  * Members
+  * Member groups
+  * Issues
+    * Comments
+  * Time entries
+  * Wiki pages

@@ -55,9 +55,9 @@ class TransferCommand extends GenericTransferCommand
         $includedSubtransfers = $input->getOption('include') ?? [];
 
         foreach ($includedSubtransfers as $includedSubtransfer) {
-            if (strpos($includedSubtransfer, 'app:') !== 0) {
+            if (strpos($includedSubtransfer, 'redmine2tuleap:') !== 0) {
                 foreach (explode(',', $includedSubtransfer) as $includedSubtransferItem) {
-                    $includedSubtransfers[] = sprintf('app:%s:transfer', $includedSubtransferItem);
+                    $includedSubtransfers[] = sprintf('redmine2tuleap:%s:transfer', $includedSubtransferItem);
                 }
             }
         }

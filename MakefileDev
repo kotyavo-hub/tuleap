@@ -30,3 +30,7 @@ post-checkout:
 .PHONY: follow-error-log
 follow-error-log:
 	docker-compose exec web bash -c "tail -F /var/log/tuleap/codendi_syslog"
+
+.PHONY: exec
+exec:
+	docker-compose exec web tuleap $(cmd)

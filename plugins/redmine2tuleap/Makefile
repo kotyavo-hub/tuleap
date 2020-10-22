@@ -1,8 +1,11 @@
-include ../.env
+include ../../.env
 export
 
 DHOST := $(shell docker run --rm bash -c 'ip -4 route show default | cut -d" " -f3')
 PWD   := $(shell pwd)
+
+.PHONY: prepare
+prepare: dump-dbs prepare-database prepare-vendor
 
 .PHONY: dump-redmine-db
 dump-redmine-db:
@@ -20,8 +23,8 @@ dump-dbs:
 	make dump-redmine-db to=redmine.sql
 	make dump-tuleap-db to=tuleap.sql
 
-.PHONY: prepare
-prepare:
+.PHONY: prepare-vendor
+prepare-vendor:
 	docker-compose run --rm app composer install
 
 .PHONY: update
@@ -30,7 +33,14 @@ update:
 
 .PHONY: transfer
 transfer:
-	DHOST=$(DHOST) docker-compose run --rm app php ./bin/transfer.php $(with)
+	DHOST=$(DHOST) docker-compose -f ./../../docker-compose.yml exec web tuleap redmine2tuleap:transfer $(with)
+
+.PHONY: full-transfer
+full-transfer: reload-redmine-db reload-tuleap-db data-transfer
+
+.PHONY: data-transfer
+data-transfer:
+	make partial-transfer of="*"
 
 .PHONY: partial-transfer
 partial-transfer:
@@ -38,7 +48,7 @@ partial-transfer:
 
 .PHONY: reload-redmine-db
 reload-redmine-db:
-	make transfer with="--sql=':schema/redmine.db.sql' --sql='redmine:redmine.sql'"
+	make transfer with="--sql='redmine:redmine.sql'"
 
 .PHONY: reload-tuleap-db
 reload-tuleap-db:
@@ -46,3 +56,13 @@ reload-tuleap-db:
 
 .PHONY: reload-db
 reload-db: reload-redmine-db reload-tuleap-db
+
+.PHONY: prepare-database
+prepare-database:
+	make sql query="CREATE DATABASE IF NOT EXISTS redmine DEFAULT CHARACTER SET utf8;"
+	make sql query="GRANT ALL PRIVILEGES ON redmine.* TO tuleapadm;"
+	make sql query="FLUSH PRIVILEGES;"
+
+.PHONY: sql
+sql:
+	docker-compose -f ./../../docker-compose.yml exec db mysql -p$(MYSQL_ROOT_PASSWORD) -e "$(query)"
