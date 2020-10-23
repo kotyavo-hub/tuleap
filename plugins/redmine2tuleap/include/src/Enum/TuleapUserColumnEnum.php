@@ -33,7 +33,4 @@ class TuleapUserColumnEnum extends Enum
     public const LAST_PWD_UPDATE = 'last_pwd_update';
     public const EXPIRY_DATE = 'expiry_date';
     public const HAS_CUSTOM_AVATAR = 'has_custom_avatar';
-
-    // custom
-    public const REDMINE_ID = 'redmine_id';
 }

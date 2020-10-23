@@ -27,9 +27,9 @@ start:
 post-checkout:
 	make post-checkout
 
-.PHONY: follow-error-log
-follow-error-log:
-	docker-compose exec web bash -c "tail -F /var/log/tuleap/codendi_syslog"
+.PHONY: follow-error-logs
+follow-error-logs:
+	docker-compose exec web bash -c "tail -F /var/log/tuleap/codendi_syslog -F /var/log/httpd/error_log -F /var/log/nginx/error.log"
 
 .PHONY: exec
 exec:

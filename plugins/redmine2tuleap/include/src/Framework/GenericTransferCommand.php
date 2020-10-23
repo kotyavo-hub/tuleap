@@ -5,8 +5,7 @@ namespace Maximaster\Redmine2TuleapPlugin\Framework;
 use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
-use Maximaster\Redmine2TuleapPlugin\Enum\Redmine2TuleapEntityExternalIdColumnEnum;
-use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTableEnum;
+use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use ParagonIE\EasyDB\EasyDB;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -21,14 +20,18 @@ abstract class GenericTransferCommand extends Command
     /** @var EasyDB */
     private $tuleapDb;
 
+    /** @var PluginRedmine2TuleapReferenceRepository */
+    private $refRepo;
+
     abstract protected function transfer(InputInterface $input, SymfonyStyle $output): int;
 
-    public function __construct(EasyDB $redmineDb, EasyDB $tuleapDb)
+    public function __construct(EasyDB $redmineDb, EasyDB $tuleapDb, PluginRedmine2TuleapReferenceRepository $refRepo)
     {
         parent::__construct();
 
         $this->redmineDb = $redmineDb;
         $this->tuleapDb = $tuleapDb;
+        $this->refRepo = $refRepo;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -81,16 +84,6 @@ abstract class GenericTransferCommand extends Command
 
     public function markAsTransfered(EntityTypeEnum $entityType, string $redmineId, string $tuleapId): void
     {
-        $tuleapDb = $this->tuleap();
-
-        $marked = $tuleapDb->insert(TuleapTableEnum::PLUGIN_REDMINE2TULEAP_ENTITY_EXTERNAL_ID, [
-            Redmine2TuleapEntityExternalIdColumnEnum::TYPE => $entityType->getValue(),
-            Redmine2TuleapEntityExternalIdColumnEnum::REDMINE_ID => $redmineId,
-            Redmine2TuleapEntityExternalIdColumnEnum::TULEAP_ID => $tuleapId,
-        ]);
-
-        if (!$marked) {
-            throw new Exception(sprintf('%d %d %s', ...$tuleapDb->errorInfo()));
-        }
+        $this->refRepo->addReference($entityType, $redmineId, $tuleapId);
     }
 }

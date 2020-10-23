@@ -31,6 +31,17 @@ class RedmineCustomFieldRepository
         return $customFields;
     }
 
+    public function allMapped(string $mapBy): array
+    {
+        $cfs = $this->all();
+        return array_map(
+            function (array $cf) {
+                return $cf[RedmineCustomFieldColumnEnum::ID];
+                },
+            $cfs
+        );
+    }
+
     public function allOfType(RedmineCustomFieldTypeEnum $type, string $remapBy = null): array
     {
         $customFields = array_filter($this->all(), function (array $customField) use ($type) {
@@ -52,6 +63,11 @@ class RedmineCustomFieldRepository
         return $customFields;
     }
 
+    public function get(int $id): array
+    {
+        return $this->allMapped(RedmineCustomFieldColumnEnum::ID)[$id];
+    }
+
     public function allOfUser(string $remapBy = null): array
     {
         return $this->allOfType(RedmineCustomFieldTypeEnum::USER(), $remapBy);
@@ -60,5 +76,27 @@ class RedmineCustomFieldRepository
     public function allOfProject(string $remapBy = null): array
     {
         return $this->allOfType(RedmineCustomFieldTypeEnum::PROJECT(), $remapBy);
+    }
+
+    public function allOfIssue(string $remapBy = null): array
+    {
+        return $this->allOfType(RedmineCustomFieldTypeEnum::ISSUE(), $remapBy);
+    }
+
+    public function valuesOfField(int $id): array
+    {
+        $possibleValues = $this->get($id)[RedmineCustomFieldColumnEnum::POSSIBLE_VALUES];
+
+        $values = [];
+        foreach (explode(PHP_EOL, $possibleValues) as $possibleValue) {
+            if (($valuePos = strpos($possibleValue, '- ')) !== false) {
+                $parsedValue = json_decode(substr($possibleValue, $valuePos + 1), true);
+                if ($parsedValue) {
+                    $values[] = $parsedValue;
+                }
+            }
+        }
+
+        return $values;
     }
 }

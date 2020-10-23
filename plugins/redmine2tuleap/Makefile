@@ -38,6 +38,11 @@ transfer:
 .PHONY: full-transfer
 full-transfer: reload-redmine-db reload-tuleap-db data-transfer
 
+.PHONY: debug-transfer
+debug-transfer:
+	make reload-tuleap-db
+	make partial-transfer of="$(of)"
+
 .PHONY: data-transfer
 data-transfer:
 	make partial-transfer of="*"
@@ -62,6 +67,7 @@ prepare-database:
 	make sql query="CREATE DATABASE IF NOT EXISTS redmine DEFAULT CHARACTER SET utf8;"
 	make sql query="GRANT ALL PRIVILEGES ON redmine.* TO tuleapadm;"
 	make sql query="FLUSH PRIVILEGES;"
+	make sql query="SET GLOBAL max_allowed_packet = 2 * 1024 * 1024 * 1024;"
 
 .PHONY: sql
 sql:

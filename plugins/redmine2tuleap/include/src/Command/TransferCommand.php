@@ -5,6 +5,7 @@ namespace Maximaster\Redmine2TuleapPlugin\Command;
 use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
 use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
+use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use ParagonIE\EasyDB\EasyDB;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
@@ -28,12 +29,18 @@ class TransferCommand extends GenericTransferCommand
     /**
      * @param EasyDB|null $redmineDb
      * @param EasyDB $tuleapDb
+     * @param PluginRedmine2TuleapReferenceRepository $refRepo
      * @param string $contentDirectory
      * @param string[] $subTransfers
      */
-    public function __construct(EasyDB $redmineDb, EasyDB $tuleapDb, string $contentDirectory, array $subTransfers)
-    {
-        parent::__construct($redmineDb, $tuleapDb);
+    public function __construct(
+        EasyDB $redmineDb,
+        EasyDB $tuleapDb,
+        PluginRedmine2TuleapReferenceRepository $refRepo,
+        string $contentDirectory,
+        array $subTransfers
+    ) {
+        parent::__construct($redmineDb, $tuleapDb, $refRepo);
 
         $this->contentDirectory = $contentDirectory;
         $this->subTransfers = $subTransfers;
@@ -49,7 +56,7 @@ class TransferCommand extends GenericTransferCommand
         ]);
     }
 
-    protected function transfer(InputInterface $input, SymfonyStyle $ss): int
+    protected function transfer(InputInterface $input, SymfonyStyle $output): int
     {
         $imports = $input->getOption('sql');
         $includedSubtransfers = $input->getOption('include') ?? [];
@@ -63,10 +70,9 @@ class TransferCommand extends GenericTransferCommand
         }
 
         $sqlImportQueue = [];
-        $maxFileSize = 0;
         foreach ($imports as $importDefinition) {
             if (strpos($importDefinition, ':') === false) {
-                $ss->error('Значение для --sql должно содержать два значение через ":": 1) Имя базы данных; 2) Путь к SQL-файлу');
+                $output->error('Значение для --sql должно содержать два значение через ":": 1) Имя базы данных; 2) Путь к SQL-файлу');
                 return -1;
             }
 
@@ -74,7 +80,7 @@ class TransferCommand extends GenericTransferCommand
 
             $sqlFilePath = realpath($this->contentDirectory . DIRECTORY_SEPARATOR . $sqlFile);
             if (!$sqlFilePath) {
-                $ss->error(sprintf('Не удалось найти файл "%s" в директории "%s"', $sqlFile, $this->contentDirectory));
+                $output->error(sprintf('Не удалось найти файл "%s" в директории "%s"', $sqlFile, $this->contentDirectory));
                 return -1;
             }
 
@@ -82,23 +88,10 @@ class TransferCommand extends GenericTransferCommand
                 'database' => $databaseName,
                 'file' => $sqlFilePath,
             ];
-
-            $fileSize = filesize($sqlFilePath);
-            if ($fileSize > $maxFileSize) {
-                $maxFileSize = $fileSize;
-            }
-        }
-
-        if ($maxFileSize) {
-            // с запасом относительно максимального размера файла
-            $packageSize = 4 * max(32 * 1024 * 1024, $maxFileSize);
-
-            $ss->note(sprintf('Устанавливаем размер MySQL пакета данных: %d', $packageSize));
-            $this->tuleap()->exec(sprintf('SET GLOBAL max_allowed_packet=%d;', $packageSize));
         }
 
         foreach ($sqlImportQueue as $importItem) {
-            $ss->note(sprintf('Производим импорт для БД %s файла %s', $importItem['database'], basename($importItem['file'])));
+            $output->note(sprintf('Производим импорт для БД %s файла %s', $importItem['database'], basename($importItem['file'])));
 
             try {
                 $this->importSqlBatch(
@@ -106,7 +99,7 @@ class TransferCommand extends GenericTransferCommand
                     file_get_contents($importItem['file'])
                 );
             } catch (Exception $e) {
-                $ss->error($e->getMessage());
+                $output->error($e->getMessage());
                 return -1;
             }
         }
@@ -114,15 +107,15 @@ class TransferCommand extends GenericTransferCommand
         $allowAllSubtransfers = in_array('*', $includedSubtransfers);
         foreach ($this->subTransfers as $subTransfer) {
             if ($allowAllSubtransfers || in_array($subTransfer, $includedSubtransfers)) {
-                $ss->note(sprintf('Запускаем %s', $subTransfer));
-                if ($this->subImport($subTransfer, $ss) !== 0) {
-                    $ss->error(sprintf('Ошибка работы команды %s', $subTransfer));
+                $output->note(sprintf('Запускаем %s', $subTransfer));
+                if ($this->subImport($subTransfer, $output) !== 0) {
+                    $output->error(sprintf('Ошибка работы команды %s', $subTransfer));
                     return -1;
                 }
             }
         }
 
-        $ss->note('OK?');
+        $output->note('OK?');
         return 0;
     }
 

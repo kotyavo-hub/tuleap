@@ -4,9 +4,8 @@ use Maximaster\Redmine2TuleapPlugin\Command\TransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferProjectsCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferUsersCommand;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
+use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
-use ParagonIE\EasyDB\EasyDB;
-use ParagonIE\EasyDB\Exception\ConstructorFailed;
 use Symfony\Component\Console\Command\Command;
 use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\DB\DBFactory;
@@ -42,33 +41,33 @@ class redmine2tuleapPlugin extends Plugin
         return parent::getHooksAndCallbacks();
     }
 
-    private function getRedmineDb(EasyDB $tuleapDb, bool $tryToCreate = true): EasyDB
-    {
-        try {
-            return DBFactory::getDBConnection(DatabaseEnum::REDMINE)->getDB();
-        } catch (ConstructorFailed $e) {
-            if ($tryToCreate) {
-                $tuleapDb->exec('CREATE DATABASE `redmine` DEFAULT CHARACTER SET utf8');
-                return $this->getRedmineDb($tuleapDb, false);
-            }
-
-            throw $e;
-        }
-    }
-
     public function collectCLICommands(CLICommandsCollector $commandCollector)
     {
         $tuleapDb = DBFactory::getMainTuleapDBConnection()->getDB();
         $redmineDb = DBFactory::getDBConnection(DatabaseEnum::REDMINE)->getDB();
 
         $cfRepo = new RedmineCustomFieldRepository($redmineDb);
+        $redmine2TuleapReferenceRepo = new PluginRedmine2TuleapReferenceRepository($tuleapDb);
 
         $subTransferCommands = [
-            TransferUsersCommand::class => function () use ($redmineDb, $tuleapDb, $cfRepo) {
-                return new TransferUsersCommand($redmineDb, $tuleapDb, $cfRepo);
+            TransferUsersCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo) {
+                return new TransferUsersCommand(
+                    $redmineDb,
+                    $tuleapDb,
+                    $redmine2TuleapReferenceRepo,
+                    $cfRepo
+                );
             },
-            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $cfRepo) {
-                return new TransferProjectsCommand($redmineDb, $tuleapDb, $cfRepo);
+            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo) {
+                return new TransferProjectsCommand(
+                    $redmineDb,
+                    $tuleapDb,
+                    $redmine2TuleapReferenceRepo,
+                    $cfRepo,
+                    ProjectManager::instance(),
+                    TrackerFactory::instance(),
+                    Tracker_FormElementFactory::instance()
+                );
             },
         ];
 
@@ -81,10 +80,11 @@ class redmine2tuleapPlugin extends Plugin
             $commandCollector->addCommand($commandName, $subTransferCommand);
         }
 
-        $commandCollector->addCommand(TransferCommand::getDefaultName(), function () use ($redmineDb, $tuleapDb, $subTransferCommandNames) {
+        $commandCollector->addCommand(TransferCommand::getDefaultName(), function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $subTransferCommandNames) {
             return new TransferCommand(
                 $redmineDb,
                 $tuleapDb,
+                $redmine2TuleapReferenceRepo,
                 realpath(__DIR__ . '/../../../'),
                 $subTransferCommandNames
             );
