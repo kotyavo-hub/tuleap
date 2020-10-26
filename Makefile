@@ -12,11 +12,13 @@ endif
 
 NPM=docker-compose -f docker-compose-dev.yml run --rm node npm
 
+DHOST := $(shell docker run --rm bash -c 'ip -4 route show default | cut -d" " -f3')
+
 get_ip_addr = `$(DOCKER_COMPOSE) ps -q $(1) | xargs docker inspect -f '{{.NetworkSettings.Networks.tuleap_default.IPAddress}}'`
 
 SUDO=
 DOCKER=$(SUDO) docker
-DOCKER_COMPOSE=$(SUDO) docker-compose $(DOCKER_COMPOSE_FILE)
+DOCKER_COMPOSE=DHOST=$(DHOST) $(SUDO) docker-compose $(DOCKER_COMPOSE_FILE)
 
 ifeq ($(MODE),Prod)
 COMPOSER_INSTALL=composer --quiet install --classmap-authoritative --no-dev --no-interaction --no-scripts --prefer-dist

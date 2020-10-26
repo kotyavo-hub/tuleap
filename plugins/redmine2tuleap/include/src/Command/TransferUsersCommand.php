@@ -20,6 +20,7 @@ use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
 use ParagonIE\EasyDB\EasyDB;
+use ParagonIE\EasyDB\EasyStatement;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
@@ -37,6 +38,11 @@ class TransferUsersCommand extends GenericTransferCommand
     public static function getDefaultName()
     {
         return 'redmine2tuleap:users:transfer';
+    }
+
+    protected function entityType(): EntityTypeEnum
+    {
+        return EntityTypeEnum::USER();
     }
 
     public function __construct(EasyDB $redmineDb, EasyDB $tuleapDb, PluginRedmine2TuleapReferenceRepository $refRepo, RedmineCustomFieldRepository $cfRepo)
@@ -63,8 +69,8 @@ class TransferUsersCommand extends GenericTransferCommand
         $redmineDb = $this->redmine();
         $tuleapDb = $this->tuleap();
 
-        $redmineUsers = $redmineDb->run('
-            select
+        $redmineUsersQuery = '
+            SELECT
                 `user`.' . RedmineUserColumnEnum::ID . ',
                 `user`.' . RedmineUserColumnEnum::LOGIN . ',
                 `user`.' . RedmineUserColumnEnum::FIRSTNAME . ',
@@ -80,20 +86,34 @@ class TransferUsersCommand extends GenericTransferCommand
                 publicSshKeyCf.' . RedmineCustomValueColumnEnum::VALUE . ' as ' . TuleapUserColumnEnum::AUTHORIZED_KEYS . ',
                 -- gmail
                 gmailCf.' . RedmineCustomValueColumnEnum::VALUE . ' as gmail
-            from ' . RedmineTableEnum::USERS . ' `user`
-            left join ' . RedmineTableEnum::EMAIL_ADDRESSES . ' as defaultEmail on
+            FROM ' . RedmineTableEnum::USERS . ' `user`
+            LEFT JOIN ' . RedmineTableEnum::EMAIL_ADDRESSES . ' as defaultEmail on
                 defaultEmail.' . RedmineEmailAddressColumnEnum::USER_ID . ' = `user`.' . RedmineUserColumnEnum::ID . ' and
                 defaultEmail.' . RedmineEmailAddressColumnEnum::IS_DEFAULT . ' = 1
-            left join ' . RedmineTableEnum::PEOPLE_INFORMATION . ' userInfo on
+            LEFT JOIN ' . RedmineTableEnum::PEOPLE_INFORMATION . ' userInfo on
                 userInfo.user_id = `user`.' . RedmineUserColumnEnum::ID . '
-            left join ' . RedmineTableEnum::CUSTOM_VALUES . ' publicSshKeyCf on
+            LEFT JOIN ' . RedmineTableEnum::CUSTOM_VALUES . ' publicSshKeyCf on
                 publicSshKeyCf.' . RedmineCustomValueColumnEnum::CUSTOM_FIELD_ID . ' = ' . $cfs['Публичный ключ'][RedmineCustomFieldColumnEnum::ID] . ' and
                 publicSshKeyCf.' . RedmineCustomValueColumnEnum::CUSTOMIZED_ID . ' = `user`.' . RedmineUserColumnEnum::ID . '
-            left join ' . RedmineTableEnum::CUSTOM_VALUES . ' gmailCf on
+            LEFT JOIN ' . RedmineTableEnum::CUSTOM_VALUES . ' gmailCf on
                 gmailCf.' . RedmineCustomValueColumnEnum::CUSTOM_FIELD_ID . ' = ' . $cfs['Gmail'][RedmineCustomFieldColumnEnum::ID] . ' and
                 gmailCf.' . RedmineCustomValueColumnEnum::CUSTOMIZED_ID . ' = `user`.' . RedmineUserColumnEnum::ID . '
-            where `user`.`type` = "User"
-        ');
+            WHERE
+                `user`.`type` = "User"
+        ';
+
+        $redmineUsersQueryValues = [];
+        if ($alreadyTransferedUserIds = $this->transferedRedmineIdList()) {
+            $redmineUsersQuery .= ' AND ' . EasyStatement::open()->in('`user`.id not in (?*)', $alreadyTransferedUserIds);
+            $redmineUsersQueryValues = array_merge($redmineUsersQueryValues, $alreadyTransferedUserIds);
+        }
+
+        $redmineUsers = $redmineDb->run($redmineUsersQuery, ...$redmineUsersQueryValues);
+
+        if (!$redmineUsers) {
+            $output->note('Have no users to import');
+            return 0;
+        }
 
         $progress = $output->createProgressBar(count($redmineUsers));
 

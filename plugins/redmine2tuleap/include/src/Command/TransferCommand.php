@@ -4,6 +4,7 @@ namespace Maximaster\Redmine2TuleapPlugin\Command;
 
 use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use ParagonIE\EasyDB\EasyDB;
@@ -122,5 +123,10 @@ class TransferCommand extends GenericTransferCommand
     private function subImport(string $name, OutputInterface $output, array $input = []): int
     {
         return $this->getApplication()->find($name)->run(new ArrayInput($input), $output);
+    }
+
+    protected function entityType(): EntityTypeEnum
+    {
+        return new EntityTypeEnum(null);
     }
 }

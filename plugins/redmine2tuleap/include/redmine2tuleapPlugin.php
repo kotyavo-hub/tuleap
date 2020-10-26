@@ -6,6 +6,7 @@ use Maximaster\Redmine2TuleapPlugin\Command\TransferUsersCommand;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
+use Maximaster\Redmine2TuleapPlugin\Repository\RedmineIssueStatusRepository;
 use Symfony\Component\Console\Command\Command;
 use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\DB\DBFactory;
@@ -47,6 +48,7 @@ class redmine2tuleapPlugin extends Plugin
         $redmineDb = DBFactory::getDBConnection(DatabaseEnum::REDMINE)->getDB();
 
         $cfRepo = new RedmineCustomFieldRepository($redmineDb);
+        $redmineIssueStatusRepo = new RedmineIssueStatusRepository($redmineDb);
         $redmine2TuleapReferenceRepo = new PluginRedmine2TuleapReferenceRepository($tuleapDb);
 
         $subTransferCommands = [
@@ -58,12 +60,13 @@ class redmine2tuleapPlugin extends Plugin
                     $cfRepo
                 );
             },
-            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo) {
+            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo, $redmineIssueStatusRepo) {
                 return new TransferProjectsCommand(
                     $redmineDb,
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
                     $cfRepo,
+                    $redmineIssueStatusRepo,
                     ProjectManager::instance(),
                     TrackerFactory::instance(),
                     Tracker_FormElementFactory::instance()

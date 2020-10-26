@@ -4,6 +4,9 @@ namespace Maximaster\Redmine2TuleapPlugin\Enum;
 
 use MyCLabs\Enum\Enum;
 
+/**
+ * @method static self ID()
+ */
 class RedmineCustomFieldColumnEnum extends Enum
 {
     public const ID = 'id';

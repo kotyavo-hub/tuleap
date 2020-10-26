@@ -55,4 +55,17 @@ class PluginRedmine2TuleapReferenceRepository
 
         return $this->references[$entityTypeName][$redmineId] ?? null;
     }
+
+    public function idsOfType(EntityTypeEnum $entityType)
+    {
+        return $this->tuleapDb->column(
+            '
+                SELECT ' . Redmine2TuleapEntityExternalIdColumnEnum::REDMINE_ID . '
+                FROM ' .  TuleapTableEnum::PLUGIN_REDMINE2TULEAP_ENTITY_EXTERNAL_ID . '
+                WHERE
+                    ' . Redmine2TuleapEntityExternalIdColumnEnum::TYPE . ' = ?
+            ',
+            [ $entityType->getValue() ]
+        );
+    }
 }

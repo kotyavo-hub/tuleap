@@ -1,6 +1,7 @@
 {
   "require": {
     "ext-mysqli": "*",
+    "ext-json": "*",
     "guzzlehttp/guzzle": "^7.0",
     "thingengineer/mysqli-database-class": "^2.9.3",
     "myclabs/php-enum": "^1.7.6",

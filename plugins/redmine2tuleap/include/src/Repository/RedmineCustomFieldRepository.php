@@ -4,6 +4,7 @@ namespace Maximaster\Redmine2TuleapPlugin\Repository;
 
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldTypeEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
 use ParagonIE\EasyDB\EasyDB;
 
 class RedmineCustomFieldRepository
@@ -21,23 +22,30 @@ class RedmineCustomFieldRepository
 
     public function all(): array
     {
-        $customFields = $this->connection->run('select * from custom_fields');
-
-        if ($this->cache) {
+        if ($this->cache !== null) {
             return $this->cache;
         }
 
+        $customFields = $this->connection->run('select * from ' . RedmineTableEnum::CUSTOM_FIELDS);
         $this->cache = $customFields;
-        return $customFields;
+
+        return $this->cache;
+
     }
 
-    public function allMapped(string $mapBy): array
+    public function allMapped(RedmineCustomFieldColumnEnum $mapField): array
     {
+        $mapFieldName = $mapField->getValue();
+
         $cfs = $this->all();
-        return array_map(
-            function (array $cf) {
-                return $cf[RedmineCustomFieldColumnEnum::ID];
+
+        return array_combine(
+            array_map(
+                function (array $cf) use ($mapFieldName) {
+                    return $cf[$mapFieldName];
                 },
+                $cfs
+            ),
             $cfs
         );
     }
@@ -65,7 +73,7 @@ class RedmineCustomFieldRepository
 
     public function get(int $id): array
     {
-        return $this->allMapped(RedmineCustomFieldColumnEnum::ID)[$id];
+        return $this->allMapped(RedmineCustomFieldColumnEnum::ID())[$id];
     }
 
     public function allOfUser(string $remapBy = null): array

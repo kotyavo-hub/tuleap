@@ -23,6 +23,8 @@ abstract class GenericTransferCommand extends Command
     /** @var PluginRedmine2TuleapReferenceRepository */
     private $refRepo;
 
+    abstract protected function entityType(): EntityTypeEnum;
+
     abstract protected function transfer(InputInterface $input, SymfonyStyle $output): int;
 
     public function __construct(EasyDB $redmineDb, EasyDB $tuleapDb, PluginRedmine2TuleapReferenceRepository $refRepo)
@@ -82,8 +84,13 @@ abstract class GenericTransferCommand extends Command
         }
     }
 
-    public function markAsTransfered(EntityTypeEnum $entityType, string $redmineId, string $tuleapId): void
+    public function markAsTransfered(string $redmineId, string $tuleapId): void
     {
-        $this->refRepo->addReference($entityType, $redmineId, $tuleapId);
+        $this->refRepo->addReference($this->entityType(), $redmineId, $tuleapId);
+    }
+
+    public function transferedRedmineIdList(): array
+    {
+        return $this->refRepo->idsOfType($this->entityType());
     }
 }
