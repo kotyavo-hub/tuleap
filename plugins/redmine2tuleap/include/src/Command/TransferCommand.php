@@ -22,6 +22,9 @@ class TransferCommand extends GenericTransferCommand
     /** @var string[] */
     private $subTransfers;
 
+    /** @var PluginRedmine2TuleapReferenceRepository */
+    private $refRepo;
+
     public static function getDefaultName()
     {
         return 'redmine2tuleap:transfer';
@@ -43,6 +46,7 @@ class TransferCommand extends GenericTransferCommand
     ) {
         parent::__construct($redmineDb, $tuleapDb, $refRepo);
 
+        $this->refRepo = $refRepo;
         $this->contentDirectory = $contentDirectory;
         $this->subTransfers = $subTransfers;
     }
@@ -92,13 +96,17 @@ class TransferCommand extends GenericTransferCommand
         }
 
         foreach ($sqlImportQueue as $importItem) {
-            $output->note(sprintf('Производим импорт для БД %s файла %s', $importItem['database'], basename($importItem['file'])));
+            $output->note(sprintf('Importing file %s into database %s', basename($importItem['file']), $importItem['database']));
 
             try {
                 $this->importSqlBatch(
                     $this->db($importItem['database'] ? new DatabaseEnum($importItem['database']) : DatabaseEnum::DEFAULT()),
                     file_get_contents($importItem['file'])
                 );
+
+                if ($importItem['database'] === DatabaseEnum::TULEAP) {
+                    $this->refRepo->clear();
+                }
             } catch (Exception $e) {
                 $output->error($e->getMessage());
                 return -1;

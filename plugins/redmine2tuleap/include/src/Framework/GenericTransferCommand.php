@@ -21,7 +21,7 @@ abstract class GenericTransferCommand extends Command
     private $tuleapDb;
 
     /** @var PluginRedmine2TuleapReferenceRepository */
-    private $refRepo;
+    protected $refRepo;
 
     abstract protected function entityType(): EntityTypeEnum;
 

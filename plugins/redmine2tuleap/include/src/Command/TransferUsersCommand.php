@@ -181,7 +181,7 @@ class TransferUsersCommand extends GenericTransferCommand
                     }
                 }
 
-                $this->markAsTransfered(EntityTypeEnum::USER(), (string) $redmineUserId, (string) $tuleapUserId);
+                $this->markAsTransfered((string) $redmineUserId, (string) $tuleapUserId);
             } catch (Exception $e) {
                 $output->error($e->getMessage());
             }

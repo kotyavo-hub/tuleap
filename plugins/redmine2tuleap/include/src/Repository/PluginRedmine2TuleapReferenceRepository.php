@@ -68,4 +68,9 @@ class PluginRedmine2TuleapReferenceRepository
             [ $entityType->getValue() ]
         );
     }
+
+    public function clear(): void
+    {
+        $this->tuleapDb->run('DELETE FROM ' . TuleapTableEnum::PLUGIN_REDMINE2TULEAP_ENTITY_EXTERNAL_ID);
+    }
 }

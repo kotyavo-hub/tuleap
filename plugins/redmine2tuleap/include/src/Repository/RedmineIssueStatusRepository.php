@@ -22,7 +22,10 @@ class RedmineIssueStatusRepository
     public function all(): array
     {
         if ($this->cache === null) {
-            $this->cache = $this->connection->run('SELECT * FROM ' . RedmineTableEnum::ISSUE_STATUSES);
+            $this->cache = $this->connection->run('
+                SELECT * FROM ' . RedmineTableEnum::ISSUE_STATUSES . '
+                ORDER BY ' . RedmineIssueStatusColumnEnum::POSITION . ' ASC
+            ');
         }
         return $this->cache;
     }

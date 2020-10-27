@@ -1,12 +1,14 @@
 <?php
 
 use Maximaster\Redmine2TuleapPlugin\Command\TransferCommand;
+use Maximaster\Redmine2TuleapPlugin\Command\TransferIssuesCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferProjectsCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferUsersCommand;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineIssueStatusRepository;
+use Maximaster\Redmine2TuleapPlugin\Repository\RedmineEnumerationRepository;
 use Symfony\Component\Console\Command\Command;
 use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\DB\DBFactory;
@@ -49,7 +51,10 @@ class redmine2tuleapPlugin extends Plugin
 
         $cfRepo = new RedmineCustomFieldRepository($redmineDb);
         $redmineIssueStatusRepo = new RedmineIssueStatusRepository($redmineDb);
+        $redmineEnumerationRepository = new RedmineEnumerationRepository($redmineDb);
         $redmine2TuleapReferenceRepo = new PluginRedmine2TuleapReferenceRepository($tuleapDb);
+
+        $trackerArtifactFactory = Tracker_ArtifactFactory::instance();
 
         $subTransferCommands = [
             TransferUsersCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo) {
@@ -60,16 +65,25 @@ class redmine2tuleapPlugin extends Plugin
                     $cfRepo
                 );
             },
-            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo, $redmineIssueStatusRepo) {
+            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo, $redmineIssueStatusRepo, $redmineEnumerationRepository) {
                 return new TransferProjectsCommand(
                     $redmineDb,
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
                     $cfRepo,
                     $redmineIssueStatusRepo,
+                    $redmineEnumerationRepository,
                     ProjectManager::instance(),
                     TrackerFactory::instance(),
                     Tracker_FormElementFactory::instance()
+                );
+            },
+            TransferIssuesCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $trackerArtifactFactory) {
+                return new TransferIssuesCommand(
+                    $redmineDb,
+                    $tuleapDb,
+                    $redmine2TuleapReferenceRepo,
+                    $trackerArtifactFactory
                 );
             },
         ];

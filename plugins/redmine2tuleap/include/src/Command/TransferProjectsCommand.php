@@ -24,6 +24,7 @@ use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTrackerStringFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
+use Maximaster\Redmine2TuleapPlugin\Repository\RedmineEnumerationRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineIssueStatusRepository;
 use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
@@ -37,7 +38,12 @@ use Tracker_FormElement_Field_List;
 use Tracker_FormElement_Field_List_Bind_Static;
 use Tracker_FormElement_Field_List_Bind_Users;
 use Tracker_FormElementFactory;
+use Tracker_Report;
+use Tracker_Report_Renderer;
+use Tracker_Report_RendererFactory;
+use Tracker_ReportFactory;
 use Tracker_Semantic_Contributor;
+use Tracker_Semantic_ContributorDao;
 use Tracker_Semantic_Description;
 use Tracker_Semantic_DescriptionDao;
 use Tracker_Semantic_Status;
@@ -57,6 +63,8 @@ use Tracker_FormElement_Field;
 class TransferProjectsCommand extends GenericTransferCommand
 {
     public const SPECIFIC_PROPERTIES = 'specific_properties';
+
+    public const TRACKER_ITEM_NAME = 'issue';
 
     public const PROJECT_STATUS_CONVERSION = [
         RedmineProjectStatusEnum::OPENED => Project::STATUS_ACTIVE,
@@ -106,6 +114,9 @@ class TransferProjectsCommand extends GenericTransferCommand
     /** @var Tracker_FormElementFactory */
     private $trackerFormElementFactory;
 
+    /** @var RedmineEnumerationRepository */
+    private $enumRepo;
+
     public static function getDefaultName()
     {
         return 'redmine2tuleap:projects:transfer';
@@ -122,6 +133,7 @@ class TransferProjectsCommand extends GenericTransferCommand
         PluginRedmine2TuleapReferenceRepository $refRepo,
         RedmineCustomFieldRepository $cfRepo,
         RedmineIssueStatusRepository $issueStatusRepo,
+        RedmineEnumerationRepository $enumRepo,
         ProjectManager $projectManager,
         TrackerFactory $trackerFactory,
         Tracker_FormElementFactory $trackerFormElementFactory
@@ -130,6 +142,7 @@ class TransferProjectsCommand extends GenericTransferCommand
         parent::__construct($redmineDb, $tuleapDb, $refRepo);
         $this->cfRepo = $cfRepo;
         $this->issueStatusRepo = $issueStatusRepo;
+        $this->enumRepo = $enumRepo;
         $this->projectManager = $projectManager;
         $this->trackerFactory = $trackerFactory;
         $this->trackerFormElementFactory = $trackerFormElementFactory;
@@ -167,7 +180,11 @@ class TransferProjectsCommand extends GenericTransferCommand
             );
 
             if (!$tuleapFieldId) {
-                $tuleapFieldId = $tuleapDb->insertGet(TuleapTableEnum::PROJECT_EXTRA_FIELD, $tuleapProjectExtraField);
+                $tuleapFieldId = $tuleapDb->insertGet(
+                    TuleapTableEnum::PROJECT_EXTRA_FIELD,
+                    $tuleapProjectExtraField,
+                    TuleapProjectExtraFieldColumnEnum::GROUP_DESC_ID
+                );
 
                 if (!$tuleapFieldId) {
                     $output->error(
@@ -179,8 +196,6 @@ class TransferProjectsCommand extends GenericTransferCommand
                         ));
                     return -1;
                 }
-
-                $tuleapFieldId = $tuleapDb->lastInsertId();
             }
 
             $redmineProjectExtraFieldToTuleap[$redmineExtraFieldId] = $tuleapFieldId;
@@ -228,7 +243,7 @@ class TransferProjectsCommand extends GenericTransferCommand
 
         if ($alreadyCreatedProjectIds = $this->transferedRedmineIdList()) {
             $projectSelectQuery .= ' WHERE ' . EasyStatement::open()->in(
-                RedmineTableEnum::PROJECTS . '.' .RedmineProjectColumnEnum::ID . ' not in (?*)',
+                RedmineTableEnum::PROJECTS . '.' . RedmineProjectColumnEnum::ID . ' not in (?*)',
                 $alreadyCreatedProjectIds
             );
             $queryValues = array_merge($queryValues, $alreadyCreatedProjectIds);
@@ -250,8 +265,6 @@ class TransferProjectsCommand extends GenericTransferCommand
         $output->note(sprintf('Going to import %d project%s', $redmineProjectCount, $redmineProjectCount > 1));
 
         $progress = $output->createProgressBar($redmineProjectCount);
-
-        $projectType = EntityTypeEnum::PROJECT();
 
         $trackerTemplate = null;
         foreach ($redmineProjects as $redmineProject) {
@@ -297,7 +310,7 @@ class TransferProjectsCommand extends GenericTransferCommand
                     $this->trackerFactory->duplicate($trackerTemplate->getGroupId(), $tuleapProjectId, null);
                 }
 
-                $this->markAsTransfered($projectType, (string) $redmineProject[RedmineProjectColumnEnum::ID], (string) $tuleapProjectId);
+                $this->markAsTransfered((string) $redmineProject[RedmineProjectColumnEnum::ID], (string) $tuleapProjectId);
             } catch (Exception $e) {
                 $output->error($e->getMessage());
                 return -1;
@@ -406,7 +419,7 @@ class TransferProjectsCommand extends GenericTransferCommand
             $tuleapProjectId,
             'Issues',
             '',
-            'Issue',
+            self::TRACKER_ITEM_NAME,
             true,
             '',
             '',
@@ -440,6 +453,8 @@ class TransferProjectsCommand extends GenericTransferCommand
      */
     private function addDefaultTrackerFields(Tracker $tracker): void
     {
+        $issueStatusLabels = $this->issueStatusRepo->allLabels();
+
         $fields = [
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::ARTIFACT_ID,
@@ -462,11 +477,16 @@ class TransferProjectsCommand extends GenericTransferCommand
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::STATUS_ID,
                 TuleapTrackerFieldColumnEnum::REQUIRED => true,
                 'bind-type' => Tracker_FormElement_Field_List_Bind_Static::TYPE,
-                'bind' => ['add' => implode("\n", $this->issueStatusRepo->allLabels())],
+                'bind' => [
+                    'add' => implode("\n", $issueStatusLabels),
+                    'default' => [reset($issueStatusLabels)]
+                ],
             ],
             [
-                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::INT,
-                TuleapTrackerFieldColumnEnum::LABEL => 'priority',
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
+                TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::PRIORITY_ID,
+                'bind-type' => Tracker_FormElement_Field_List_Bind_Static::TYPE,
+                'bind' => ['add' => implode("\n", $this->enumRepo->allIssuePriorityNames())],
             ],
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
@@ -498,6 +518,10 @@ class TransferProjectsCommand extends GenericTransferCommand
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::INT,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::ESTIMATED_HOURS,
             ],
+            [
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::LAST_UPDATE_DATE,
+                TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::UPDATED_ON,
+            ]
         ];
 
         foreach ($this->cfRepo->allOfIssue(RedmineCustomFieldColumnEnum::ID) as $customFieldId => $customField) {
@@ -570,6 +594,7 @@ class TransferProjectsCommand extends GenericTransferCommand
         }
 
         $this->configureSemantics($tracker);
+        $this->configureReports($tracker);
     }
 
     /**
@@ -664,7 +689,7 @@ class TransferProjectsCommand extends GenericTransferCommand
                     break;
 
                 case Tracker_Semantic_Contributor::class:
-                    $semanticSaved = (new \Tracker_Semantic_ContributorDao())->save(
+                    $semanticSaved = (new Tracker_Semantic_ContributorDao())->save(
                         $tracker->id,
                         $trackerFieldIds[RedmineIssueColumnEnum::ASSIGNED_TO_ID]
                     );
@@ -691,5 +716,84 @@ class TransferProjectsCommand extends GenericTransferCommand
                 throw new Exception(sprintf('Failed to configure semantic for %s', $semantic->getShortName()));
             }
         }
+    }
+
+    /**
+     * @param Tracker $tracker
+     *
+     * @throws Exception
+     */
+    private function configureReports(Tracker $tracker): void
+    {
+        $reportFactory = Tracker_ReportFactory::instance();
+
+        $trackerReport = new Tracker_Report(
+            0,
+            'default',
+            '',
+            0,
+            0,
+            null,
+            true,
+            $tracker->id,
+            true,
+            false,
+            '',
+            null,
+            0
+        );
+
+        $reportId = $reportFactory->saveObject($tracker->id, $trackerReport);
+
+        if (!$reportId) {
+            throw new Exception(sprintf('Failed to create tracker #%d report', $tracker->id));
+        }
+
+        $report = $reportFactory->getReportById($reportId, null, false);
+
+        $rendererFactory = Tracker_Report_RendererFactory::instance();
+
+        $rendererId = $rendererFactory->create($report, 'default', '', Tracker_Report_Renderer::TABLE);
+        if (!$rendererId) {
+            throw new Exception(sprintf('Failed to create report #%d renderer #%d', $reportId, $rendererId));
+        }
+
+        $reportRenderer = $rendererFactory->getReportRendererById($rendererId, null, false);
+
+        $fields = $tracker->getFormElementFields();
+        $fields = array_combine(
+            array_map(
+                function (Tracker_FormElement_Field $field) {
+                    return $field->getLabel();
+                },
+                $fields
+            ),
+            array_map(
+                function (Tracker_FormElement_Field $field) {
+                    return $field->getId();
+                },
+                $fields
+            )
+        );
+
+        $reportColumns = [
+            RedmineIssueColumnEnum::ID,
+            RedmineIssueColumnEnum::STATUS_ID,
+            RedmineIssueColumnEnum::PRIORITY_ID,
+            RedmineIssueColumnEnum::SUBJECT,
+            RedmineIssueColumnEnum::ASSIGNED_TO_ID,
+            RedmineIssueColumnEnum::UPDATED_ON,
+            RedmineIssueColumnEnum::DUE_DATE,
+            RedmineIssueColumnEnum::ESTIMATED_HOURS,
+        ];
+
+        $reportColumns = array_map(
+            function (string $column) use ($fields) {
+                return ['field' => (object) ['id' => $fields[$column]]];
+            },
+            $reportColumns
+        );
+
+        $reportRenderer->saveColumns($reportColumns);
     }
 }
