@@ -526,6 +526,7 @@ class TransferProjectsCommand extends GenericTransferCommand
 
         foreach ($this->cfRepo->allOfIssue(RedmineCustomFieldColumnEnum::ID) as $customFieldId => $customField) {
             $field = [
+                TuleapTrackerFieldColumnEnum::NAME => $customFieldId,
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => $this->getCustomFieldFormElementType($customField),
                 TuleapTrackerFieldColumnEnum::LABEL => $customField[RedmineCustomFieldColumnEnum::NAME],
             ];
@@ -569,6 +570,7 @@ class TransferProjectsCommand extends GenericTransferCommand
 
         foreach ($fields as $fieldRank => $field) {
             $field += [
+                TuleapTrackerFieldColumnEnum::NAME => $field[TuleapTrackerFieldColumnEnum::LABEL],
                 TuleapTrackerFieldColumnEnum::RANK => $fieldRank + 1,
                 TuleapTrackerFieldColumnEnum::USE_IT => 1,
             ];

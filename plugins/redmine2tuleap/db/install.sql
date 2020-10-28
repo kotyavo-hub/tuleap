@@ -4,3 +4,8 @@ CREATE TABLE IF NOT EXISTS `plugin_redmine2tuleap_entity_external_id` (
     `redmine_id` INT NOT NULL,
     `tuleap_id` INT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS `plugin_redmine2tuleap_tracker_field_list_bind_users_backup` (
+    `field_id` INT NOT NULL,
+    `value_function` TEXT
+);

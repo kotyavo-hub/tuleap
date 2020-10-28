@@ -2,6 +2,7 @@
 
 namespace Maximaster\Redmine2TuleapPlugin\Repository;
 
+use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
@@ -106,5 +107,16 @@ class RedmineCustomFieldRepository
         }
 
         return $values;
+    }
+
+    public function oneOfName(string $fieldName, RedmineCustomFieldTypeEnum $type): array
+    {
+        foreach ($this->allOfType($type) as $customField) {
+            if ($fieldName === $customField[RedmineCustomFieldColumnEnum::NAME]) {
+                return $customField;
+            }
+        }
+
+        throw new Exception(sprintf('Failed to find field "%s" of type %s', $fieldName, $type->getValue()));
     }
 }

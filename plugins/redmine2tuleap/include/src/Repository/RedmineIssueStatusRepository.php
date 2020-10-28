@@ -2,6 +2,7 @@
 
 namespace Maximaster\Redmine2TuleapPlugin\Repository;
 
+use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineIssueStatusColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
 use ParagonIE\EasyDB\EasyDB;
@@ -61,5 +62,16 @@ class RedmineIssueStatusRepository
             },
             $this->all()
         );
+    }
+
+    public function get(int $statusId): array
+    {
+        foreach ($this->all() as $status) {
+            if ($status[RedmineIssueStatusColumnEnum::ID] === $statusId) {
+                return $status;
+            }
+        }
+
+        throw new Exception(sprintf('Failed to find status %d', $statusId));
     }
 }

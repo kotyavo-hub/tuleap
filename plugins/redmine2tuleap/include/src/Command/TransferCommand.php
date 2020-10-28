@@ -22,9 +22,6 @@ class TransferCommand extends GenericTransferCommand
     /** @var string[] */
     private $subTransfers;
 
-    /** @var PluginRedmine2TuleapReferenceRepository */
-    private $refRepo;
-
     public static function getDefaultName()
     {
         return 'redmine2tuleap:transfer';
@@ -46,7 +43,6 @@ class TransferCommand extends GenericTransferCommand
     ) {
         parent::__construct($redmineDb, $tuleapDb, $refRepo);
 
-        $this->refRepo = $refRepo;
         $this->contentDirectory = $contentDirectory;
         $this->subTransfers = $subTransfers;
     }
@@ -116,7 +112,7 @@ class TransferCommand extends GenericTransferCommand
         $allowAllSubtransfers = in_array('*', $includedSubtransfers);
         foreach ($this->subTransfers as $subTransfer) {
             if ($allowAllSubtransfers || in_array($subTransfer, $includedSubtransfers)) {
-                $output->note(sprintf('Запускаем %s', $subTransfer));
+                $output->section(sprintf('Starting %s', $subTransfer));
                 if ($this->subImport($subTransfer, $output) !== 0) {
                     $output->error(sprintf('Ошибка работы команды %s', $subTransfer));
                     return -1;

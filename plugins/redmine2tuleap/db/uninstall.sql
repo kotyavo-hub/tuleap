@@ -1,1 +1,2 @@
 DROP TABLE IF EXISTS plugin_redmine2tuleap_entity_external_id;
+DROP TABLE IF EXISTS plugin_redmine2tuleap_tracker_field_list_bind_users_backup;

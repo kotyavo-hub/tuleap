@@ -62,7 +62,6 @@ class TransferUsersCommand extends GenericTransferCommand
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
     {
         $ss = new SymfonyStyle($input, $output);
-        $ss->note('Импорт пользователей');
 
         $cfs = $this->cfRepo->allOfUser(RedmineCustomFieldColumnEnum::NAME);
 
@@ -115,7 +114,11 @@ class TransferUsersCommand extends GenericTransferCommand
             return 0;
         }
 
-        $progress = $output->createProgressBar(count($redmineUsers));
+        $usersCnt = count($redmineUsers);
+
+        $ss->section(sprintf('Transfering users (%d)', $usersCnt));
+
+        $progress = $output->createProgressBar($usersCnt);
 
         foreach ($redmineUsers as $redmineUser) {
             try {
@@ -163,6 +166,7 @@ class TransferUsersCommand extends GenericTransferCommand
                 if ($redmineUser[RedmineUserColumnEnum::ADMIN]) {
                     $inserted = $tuleapDb->insert(TuleapTableEnum::USER_GROUP, [
                         TuleapUserGroupColumnEnum::USER_ID => $tuleapUserId,
+                        TuleapUserGroupColumnEnum::GROUP_ID => 1,
                         TuleapUserGroupColumnEnum::ADMIN_FLAGS => 'A',
                         TuleapUserGroupColumnEnum::BUG_FLAGS => 2,
                         TuleapUserGroupColumnEnum::FORUM_FLAGS => 2,

@@ -56,6 +56,16 @@ class PluginRedmine2TuleapReferenceRepository
         return $this->references[$entityTypeName][$redmineId] ?? null;
     }
 
+    public function getTuleapId(EntityTypeEnum $entityType, string $redmineId): ?string
+    {
+        $tuleapId = $this->findTuleapId($entityType, $redmineId);
+        if (!$tuleapId) {
+            throw new Exception(sprintf('Failed to find tuleap id for remdmine id of %d', $redmineId));
+        }
+
+        return $tuleapId;
+    }
+
     public function idsOfType(EntityTypeEnum $entityType)
     {
         return $this->tuleapDb->column(
