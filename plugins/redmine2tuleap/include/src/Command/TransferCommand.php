@@ -35,13 +35,14 @@ class TransferCommand extends GenericTransferCommand
      * @param string[] $subTransfers
      */
     public function __construct(
+        string $pluginDirectory,
         EasyDB $redmineDb,
         EasyDB $tuleapDb,
         PluginRedmine2TuleapReferenceRepository $refRepo,
         string $contentDirectory,
         array $subTransfers
     ) {
-        parent::__construct($redmineDb, $tuleapDb, $refRepo);
+        parent::__construct($pluginDirectory, $redmineDb, $tuleapDb, $refRepo);
 
         $this->contentDirectory = $contentDirectory;
         $this->subTransfers = $subTransfers;
@@ -49,6 +50,8 @@ class TransferCommand extends GenericTransferCommand
 
     protected function configure()
     {
+        parent::configure();
+
         $def = $this->getDefinition();
 
         $def->addOptions([
@@ -62,11 +65,22 @@ class TransferCommand extends GenericTransferCommand
         $imports = $input->getOption('sql');
         $includedSubtransfers = $input->getOption('include') ?? [];
 
-        foreach ($includedSubtransfers as $includedSubtransfer) {
+        foreach ($includedSubtransfers as $idx => $includedSubtransfer) {
             if (strpos($includedSubtransfer, 'redmine2tuleap:') !== 0) {
                 foreach (explode(',', $includedSubtransfer) as $includedSubtransferItem) {
                     $includedSubtransfers[] = sprintf('redmine2tuleap:%s:transfer', $includedSubtransferItem);
+                    unset($includedSubtransfers[$idx]);
                 }
+            } elseif ($includedSubtransfer === '*') {
+                $includedSubtransfers = $this->subTransfers;
+                break;
+            }
+        }
+
+        foreach ($includedSubtransfers as $includedSubtransfer) {
+            if (!in_array($includedSubtransfer, $this->subTransfers)) {
+                $output->error(sprintf('Unknown sub-transfer "%s". Allowed: %s', $includedSubtransfer, implode(', ', $this->subTransfers)));
+                return -1;
             }
         }
 
@@ -92,7 +106,7 @@ class TransferCommand extends GenericTransferCommand
         }
 
         foreach ($sqlImportQueue as $importItem) {
-            $output->note(sprintf('Importing file %s into database %s', basename($importItem['file']), $importItem['database']));
+            $output->note(sprintf('Importing file %s into %s database', basename($importItem['file']), $importItem['database']));
 
             try {
                 $this->importSqlBatch(
@@ -109,14 +123,11 @@ class TransferCommand extends GenericTransferCommand
             }
         }
 
-        $allowAllSubtransfers = in_array('*', $includedSubtransfers);
-        foreach ($this->subTransfers as $subTransfer) {
-            if ($allowAllSubtransfers || in_array($subTransfer, $includedSubtransfers)) {
-                $output->section(sprintf('Starting %s', $subTransfer));
-                if ($this->subImport($subTransfer, $output) !== 0) {
-                    $output->error(sprintf('Ошибка работы команды %s', $subTransfer));
-                    return -1;
-                }
+        foreach ($includedSubtransfers as $includedSubtransfer) {
+            $output->section(sprintf('Starting sub-import %s', $includedSubtransfer));
+            if ($this->subImport($includedSubtransfer, $output) !== 0) {
+                $output->error(sprintf('Failed sub-import %s', $includedSubtransfer));
+                return -1;
             }
         }
 

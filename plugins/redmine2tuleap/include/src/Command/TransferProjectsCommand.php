@@ -8,9 +8,11 @@ use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldFormatEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomValueColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineIssueColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineMemberColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineProjectColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineProjectStatusEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineUserColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapProjectColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapProjectExtraFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapProjectExtraFieldTypeEnum;
@@ -21,6 +23,7 @@ use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTableEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTrackerFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTrackerFormElementTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTrackerStringFieldColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\UserBindValueFunctionEnum;
 use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
@@ -30,6 +33,7 @@ use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
 use Project;
 use ProjectManager;
+use Response;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tracker;
@@ -54,15 +58,19 @@ use Tracker_SemanticManager;
 use Tracker_Tooltip;
 use Tracker_TooltipDao;
 use TrackerFactory;
+use Tuleap\Project\UGroups\Membership\DynamicUGroups\ProjectMemberAdder;
 use Tuleap\Tracker\Creation\TrackerCreationSettings;
 use Tuleap\Tracker\Semantic\Timeframe\SemanticTimeframe;
 use Tuleap\Tracker\Semantic\Timeframe\SemanticTimeframeDao;
 use Tuleap\Tracker\TrackerColor;
 use Tracker_FormElement_Field;
+use UserManager;
 
 class TransferProjectsCommand extends GenericTransferCommand
 {
     public const SPECIFIC_PROPERTIES = 'specific_properties';
+    public const BIND = 'bind';
+    public const BIND_TYPE = 'bind-type';
 
     public const TRACKER_ITEM_NAME = 'issue';
 
@@ -117,6 +125,12 @@ class TransferProjectsCommand extends GenericTransferCommand
     /** @var RedmineEnumerationRepository */
     private $enumRepo;
 
+    /** @var ProjectMemberAdder */
+    private $projectMemberAdder;
+
+    /** @var UserManager */
+    private $userManager;
+
     public static function getDefaultName()
     {
         return 'redmine2tuleap:projects:transfer';
@@ -128,6 +142,7 @@ class TransferProjectsCommand extends GenericTransferCommand
     }
 
     public function __construct(
+        string $pluginDirectory,
         EasyDB $redmineDb,
         EasyDB $tuleapDb,
         PluginRedmine2TuleapReferenceRepository $refRepo,
@@ -136,16 +151,20 @@ class TransferProjectsCommand extends GenericTransferCommand
         RedmineEnumerationRepository $enumRepo,
         ProjectManager $projectManager,
         TrackerFactory $trackerFactory,
-        Tracker_FormElementFactory $trackerFormElementFactory
+        Tracker_FormElementFactory $trackerFormElementFactory,
+        ProjectMemberAdder $projectMemberAdder,
+        UserManager $userManager
     )
     {
-        parent::__construct($redmineDb, $tuleapDb, $refRepo);
+        parent::__construct($pluginDirectory, $redmineDb, $tuleapDb, $refRepo);
         $this->cfRepo = $cfRepo;
         $this->issueStatusRepo = $issueStatusRepo;
         $this->enumRepo = $enumRepo;
         $this->projectManager = $projectManager;
         $this->trackerFactory = $trackerFactory;
         $this->trackerFormElementFactory = $trackerFormElementFactory;
+        $this->projectMemberAdder = $projectMemberAdder;
+        $this->userManager = $userManager;
     }
 
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
@@ -262,12 +281,14 @@ class TransferProjectsCommand extends GenericTransferCommand
         }
 
         $redmineProjectCount = count($redmineProjects);
-        $output->note(sprintf('Going to import %d project%s', $redmineProjectCount, $redmineProjectCount > 1));
+        $output->note(sprintf('Going to import %d project%s', $redmineProjectCount, $redmineProjectCount > 1 ? 's' : ''));
 
         $progress = $output->createProgressBar($redmineProjectCount);
 
         $trackerTemplate = null;
         foreach ($redmineProjects as $redmineProject) {
+            $redmineProjectId = $redmineProject[RedmineProjectColumnEnum::ID];
+
             try {
                 $tuleapProject = [
                     TuleapProjectColumnEnum::GROUP_NAME => $redmineProject[RedmineProjectColumnEnum::NAME],
@@ -310,7 +331,9 @@ class TransferProjectsCommand extends GenericTransferCommand
                     $this->trackerFactory->duplicate($trackerTemplate->getGroupId(), $tuleapProjectId, null);
                 }
 
-                $this->markAsTransfered((string) $redmineProject[RedmineProjectColumnEnum::ID], (string) $tuleapProjectId);
+                $this->transferMembers($redmineProjectId, $tuleapProjectId);
+
+                $this->markAsTransfered((string) $redmineProjectId, (string) $tuleapProjectId);
             } catch (Exception $e) {
                 $output->error($e->getMessage());
                 return -1;
@@ -439,7 +462,7 @@ class TransferProjectsCommand extends GenericTransferCommand
             }
 
             $trackerTemplate = $this->trackerFactory->getTrackerById($trackerId);
-            $this->addDefaultTrackerFields($trackerTemplate);
+            $this->configureDefaultTrackerFields($trackerTemplate);
         } catch (Exception $e) {
             throw new Exception(sprintf('Failed to create tracker template: %s', $e->getMessage()));
         }
@@ -451,7 +474,7 @@ class TransferProjectsCommand extends GenericTransferCommand
      *
      * @throws Exception
      */
-    private function addDefaultTrackerFields(Tracker $tracker): void
+    private function configureDefaultTrackerFields(Tracker $tracker): void
     {
         $issueStatusLabels = $this->issueStatusRepo->allLabels();
 
@@ -459,6 +482,10 @@ class TransferProjectsCommand extends GenericTransferCommand
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::ARTIFACT_ID,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::ID,
+            ],
+            [
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SUBMITTED_BY,
+                TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::AUTHOR_ID,
             ],
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::STRING,
@@ -476,8 +503,8 @@ class TransferProjectsCommand extends GenericTransferCommand
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::STATUS_ID,
                 TuleapTrackerFieldColumnEnum::REQUIRED => true,
-                'bind-type' => Tracker_FormElement_Field_List_Bind_Static::TYPE,
-                'bind' => [
+                self::BIND_TYPE => Tracker_FormElement_Field_List_Bind_Static::TYPE,
+                self::BIND => [
                     'add' => implode("\n", $issueStatusLabels),
                     'default' => [reset($issueStatusLabels)]
                 ],
@@ -485,14 +512,14 @@ class TransferProjectsCommand extends GenericTransferCommand
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::PRIORITY_ID,
-                'bind-type' => Tracker_FormElement_Field_List_Bind_Static::TYPE,
-                'bind' => ['add' => implode("\n", $this->enumRepo->allIssuePriorityNames())],
+                self::BIND_TYPE => Tracker_FormElement_Field_List_Bind_Static::TYPE,
+                self::BIND => ['add' => implode("\n", $this->enumRepo->allIssuePriorityNames())],
             ],
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::ASSIGNED_TO_ID,
-                'bind-type' => Tracker_FormElement_Field_List_Bind_Users::TYPE,
-                'bind' => ['value_function' => ['', 'group_members']],
+                self::BIND_TYPE => Tracker_FormElement_Field_List_Bind_Users::TYPE,
+                self::BIND => ['value_function' => [UserBindValueFunctionEnum::PROJECT_MEMBERS]],
             ],
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::ARTIFACT_LINK,
@@ -515,7 +542,7 @@ class TransferProjectsCommand extends GenericTransferCommand
                 ],
             ],
             [
-                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::INT,
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::FLOAT,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::ESTIMATED_HOURS,
             ],
             [
@@ -536,7 +563,7 @@ class TransferProjectsCommand extends GenericTransferCommand
                     $field = [
                         TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
                         'bind-type' => Tracker_FormElement_Field_List_Bind_Users::TYPE,
-                        'bind' => ['value_function' => ['', 'group_members']],
+                        'bind' => ['value_function' => [UserBindValueFunctionEnum::PROJECT_MEMBERS]],
                     ] + $field;
                     break;
 
@@ -797,5 +824,53 @@ class TransferProjectsCommand extends GenericTransferCommand
         );
 
         $reportRenderer->saveColumns($reportColumns);
+    }
+
+    private function transferMembers(int $redmineProjectId, int $tuleapProjectId): void
+    {
+        /** @var Response $Response */
+        global $Response;
+
+        $redmineDb = $this->redmine();
+
+        $redmineProjectUserIds = $redmineDb->column(
+            '
+                SELECT ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::USER_ID . '
+                FROM ' . RedmineTableEnum::MEMBERS . '
+                LEFT JOIN ' . RedmineTableEnum::USERS . ' ON
+                    ' . RedmineTableEnum::USERS . '.' . RedmineUserColumnEnum::ID . ' = ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::USER_ID . '
+                WHERE
+                    ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::PROJECT_ID . ' = ? AND
+                    ' . RedmineTableEnum::USERS . '.`' . RedmineUserColumnEnum::TYPE . '` = "User"
+            ',
+            [ $redmineProjectId ]
+        );
+
+        $tuleapProject = $this->projectManager->getProject($tuleapProjectId);
+        foreach ($redmineProjectUserIds as $redmineProjectUserId) {
+            $tuleapUserId = $this->refRepo->getTuleapUserId($redmineProjectUserId, false);
+            if (!$tuleapUserId) {
+                throw new Exception(sprintf('Failed to find tuleap user by redmine user_id %d. Transfer users first', $redmineProjectUserId));
+            }
+
+            $tuleapUser = $this->userManager->getUserById($tuleapUserId);
+            if (!$tuleapUser) {
+                throw new Exception(sprintf('Failed to find redmine user #%d in tuleap database', $redmineProjectUserId));
+            }
+
+            $this->projectMemberAdder->addProjectMember($tuleapUser, $tuleapProject);
+
+            if ($Response->feedbackHasErrors()) {
+                throw new Exception(
+                    sprintf(
+                        'Failed to link user #%d to project #%d: %s',
+                        $tuleapUser->getId(),
+                        $tuleapProjectId,
+                        implode('; ', $Response->getFeedbackErrors()
+                        )
+                    )
+                );
+            }
+        }
     }
 }

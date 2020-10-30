@@ -14,6 +14,8 @@ use Symfony\Component\Console\Command\Command;
 use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\DB\DBFactory;
 use Netcarver\Textile;
+use Tuleap\Project\UGroups\Membership\DynamicUGroups\ProjectMemberAdderWithoutStatusCheckAndNotifications;
+use Tuleap\Project\UserPermissionsDao;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -56,22 +58,49 @@ class redmine2tuleapPlugin extends Plugin
         $redmineEnumerationRepository = new RedmineEnumerationRepository($redmineDb);
         $redmine2TuleapReferenceRepo = new PluginRedmine2TuleapReferenceRepository($tuleapDb);
         $redmine2TuleapTrackerFieldListBindUsersBackupRepo = new PluginRedmine2TuleapTrackerFieldListBindUsersBackupRepository($tuleapDb);
+        $pluginDirectory = $this->getFilesystemPath();
 
         $trackerArtifactFactory = Tracker_ArtifactFactory::instance();
+        $userPermDao = new UserPermissionsDao();
+        $projectMemberAdder = ProjectMemberAdderWithoutStatusCheckAndNotifications::build();
+        $userManager = UserManager::instance();
 
         $textileParser = new Textile\Parser();
 
         $subTransferCommands = [
-            TransferUsersCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo) {
+            TransferUsersCommand::class => function () use (
+                $pluginDirectory,
+                $redmineDb,
+                $tuleapDb,
+                $redmine2TuleapReferenceRepo,
+                $cfRepo,
+                $userManager,
+                $userPermDao
+            ) {
                 return new TransferUsersCommand(
+                    $pluginDirectory,
                     $redmineDb,
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
-                    $cfRepo
+                    $cfRepo,
+                    $userManager,
+                    $userPermDao
                 );
             },
-            TransferProjectsCommand::class => function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $cfRepo, $redmineIssueStatusRepo, $redmineEnumerationRepository) {
+            TransferProjectsCommand::class => function ()
+                use (
+                    $pluginDirectory,
+                    $redmineDb,
+                    $tuleapDb,
+                    $redmine2TuleapReferenceRepo,
+                    $cfRepo,
+                    $redmineIssueStatusRepo,
+                    $redmineEnumerationRepository,
+                    $projectMemberAdder,
+                    $userManager
+                ) {
                 return new TransferProjectsCommand(
+                    $pluginDirectory,
                     $redmineDb,
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
@@ -80,11 +109,14 @@ class redmine2tuleapPlugin extends Plugin
                     $redmineEnumerationRepository,
                     ProjectManager::instance(),
                     TrackerFactory::instance(),
-                    Tracker_FormElementFactory::instance()
+                    Tracker_FormElementFactory::instance(),
+                    $projectMemberAdder,
+                    $userManager
                 );
             },
             TransferIssuesCommand::class => function ()
                 use (
+                    $pluginDirectory,
                     $redmineDb,
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
@@ -93,9 +125,12 @@ class redmine2tuleapPlugin extends Plugin
                     $redmineIssueStatusRepo,
                     $redmineEnumerationRepository,
                     $textileParser,
-                    $redmine2TuleapTrackerFieldListBindUsersBackupRepo
+                    $redmine2TuleapTrackerFieldListBindUsersBackupRepo,
+                    $userPermDao,
+                    $userManager
                 ) {
                 return new TransferIssuesCommand(
+                    $pluginDirectory,
                     $redmineDb,
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
@@ -106,7 +141,9 @@ class redmine2tuleapPlugin extends Plugin
                     $redmineIssueStatusRepo,
                     $redmineEnumerationRepository,
                     $textileParser,
-                    $redmine2TuleapTrackerFieldListBindUsersBackupRepo
+                    $redmine2TuleapTrackerFieldListBindUsersBackupRepo,
+                    $userPermDao,
+                    $userManager
                 );
             },
         ];
@@ -120,8 +157,9 @@ class redmine2tuleapPlugin extends Plugin
             $commandCollector->addCommand($commandName, $subTransferCommand);
         }
 
-        $commandCollector->addCommand(TransferCommand::getDefaultName(), function () use ($redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $subTransferCommandNames) {
+        $commandCollector->addCommand(TransferCommand::getDefaultName(), function () use ($pluginDirectory, $redmineDb, $tuleapDb, $redmine2TuleapReferenceRepo, $subTransferCommandNames) {
             return new TransferCommand(
+                $pluginDirectory,
                 $redmineDb,
                 $tuleapDb,
                 $redmine2TuleapReferenceRepo,
