@@ -17,7 +17,11 @@ class PluginRedmine2TuleapReferenceRepository
     /** @var TransferConfig */
     private $config;
 
-    /** @var array */
+    /**
+     * In-memory cache
+     *
+     * @var array
+     */
     private $references;
 
     /** @var EntityTypeEnum[] */
@@ -89,7 +93,7 @@ class PluginRedmine2TuleapReferenceRepository
         return $tuleapId;
     }
 
-    public function idsOfType(EntityTypeEnum $entityType)
+    public function redmineIdsOfType(EntityTypeEnum $entityType)
     {
         return $this->tuleapDb->column(
             '

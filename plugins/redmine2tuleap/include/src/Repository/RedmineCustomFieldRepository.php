@@ -39,16 +39,7 @@ class RedmineCustomFieldRepository
         $mapFieldName = $mapField->getValue();
 
         $cfs = $this->all();
-
-        return array_combine(
-            array_map(
-                function (array $cf) use ($mapFieldName) {
-                    return $cf[$mapFieldName];
-                },
-                $cfs
-            ),
-            $cfs
-        );
+        return array_combine(array_column($cfs, $mapFieldName), $cfs);
     }
 
     public function allOfType(RedmineCustomFieldTypeEnum $type, string $remapBy = null): array
@@ -58,15 +49,7 @@ class RedmineCustomFieldRepository
         });
 
         if ($remapBy !== null) {
-            $customFields = array_combine(
-                array_map(
-                    function (array $customField) use ($remapBy) {
-                        return $customField[$remapBy];
-                    },
-                    $customFields
-                ),
-                $customFields
-            );
+            $customFields = array_combine(array_column($customFields, $remapBy), $customFields);
         }
 
         return $customFields;

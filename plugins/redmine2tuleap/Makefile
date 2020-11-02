@@ -35,6 +35,10 @@ update:
 transfer:
 	DHOST=$(DHOST) docker-compose -f ./../../docker-compose.yml exec web tuleap redmine2tuleap:transfer $(with)
 
+.PHONY: subtransfer
+subtransfer:
+	DHOST=$(DHOST) docker-compose -f ./../../docker-compose.yml exec web tuleap redmine2tuleap:$(of):transfer $(with)
+
 .PHONY: full-transfer
 full-transfer: reload-redmine-db reload-tuleap-db data-transfer
 

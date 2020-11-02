@@ -6,6 +6,9 @@ use BaseLanguage;
 
 class TransferConfig
 {
+    /** @var string */
+    private $redmineDirectory;
+
     /**
      * Some object could refer deleted users, but we should link them to someone
      * @var int
@@ -26,11 +29,21 @@ class TransferConfig
      */
     private $language;
 
-    public function __construct(int $defaultRedmineUserId, string $language = BaseLanguage::DEFAULT_LANG, array $excludedCustomFields = [])
-    {
+    public function __construct(
+        string $redmineDirectory,
+        int $defaultRedmineUserId,
+        string $language = BaseLanguage::DEFAULT_LANG,
+        array $excludedCustomFields = []
+    ) {
+        $this->redmineDirectory = $redmineDirectory;
         $this->defaultRedmineUserId = $defaultRedmineUserId;
         $this->language = $language;
         $this->excludedCustomFields = $excludedCustomFields;
+    }
+
+    public function redmineDirectory(): string
+    {
+        return $this->redmineDirectory;
     }
 
     public function defaultRedmineUserId(): int

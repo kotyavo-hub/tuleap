@@ -9,6 +9,7 @@ use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use ParagonIE\EasyDB\EasyDB;
+use Response;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -111,7 +112,7 @@ abstract class GenericTransferCommand extends Command
 
     public function transferedRedmineIdList(): array
     {
-        return $this->refRepo->idsOfType($this->entityType());
+        return $this->refRepo->redmineIdsOfType($this->entityType());
     }
 
     private function loadConfig(string $fileName): void
@@ -123,5 +124,22 @@ abstract class GenericTransferCommand extends Command
     public function config(): TransferConfig
     {
         return $this->config;
+    }
+
+    /**
+     * @param string $prefixMessage
+     *
+     * @throws Exception
+     */
+    protected function throwOnResponseHasErrors(string $prefixMessage): void
+    {
+        /** @var Response $Response */
+        global $Response;
+
+        if (!$Response || !$Response->feedbackHasErrors()) {
+            return;
+        }
+
+        throw new Exception($prefixMessage . ': ' . implode('; ', $Response->getFeedbackErrors()));
     }
 }

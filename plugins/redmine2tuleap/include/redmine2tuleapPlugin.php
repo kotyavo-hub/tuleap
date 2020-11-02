@@ -5,6 +5,7 @@ use Maximaster\Redmine2TuleapPlugin\Command\TransferIssuesCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferProjectsCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferUsersCommand;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\TuleapPluginEnum;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapTrackerFieldListBindUsersBackupRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineCustomFieldRepository;
@@ -15,7 +16,9 @@ use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\DB\DBFactory;
 use Netcarver\Textile;
 use Tuleap\Project\UGroups\Membership\DynamicUGroups\ProjectMemberAdderWithoutStatusCheckAndNotifications;
+use Tuleap\Project\UGroups\Membership\StaticUGroups\StaticMemberAdder;
 use Tuleap\Project\UserPermissionsDao;
+use Tuleap\Timetracking;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -60,6 +63,7 @@ class redmine2tuleapPlugin extends Plugin
         $redmine2TuleapTrackerFieldListBindUsersBackupRepo = new PluginRedmine2TuleapTrackerFieldListBindUsersBackupRepository($tuleapDb);
         $pluginDirectory = $this->getFilesystemPath();
 
+        $pluginManager = PluginManager::instance();
         $trackerArtifactFactory = Tracker_ArtifactFactory::instance();
         $userPermDao = new UserPermissionsDao();
         $projectMemberAdder = ProjectMemberAdderWithoutStatusCheckAndNotifications::build();
@@ -97,8 +101,12 @@ class redmine2tuleapPlugin extends Plugin
                     $redmineIssueStatusRepo,
                     $redmineEnumerationRepository,
                     $projectMemberAdder,
-                    $userManager
+                    $userManager,
+                    $pluginManager
                 ) {
+
+                $timetrackingPlugin = $pluginManager->getPluginByName(TuleapPluginEnum::TIMETRACKING);
+
                 return new TransferProjectsCommand(
                     $pluginDirectory,
                     $redmineDb,
@@ -111,7 +119,9 @@ class redmine2tuleapPlugin extends Plugin
                     TrackerFactory::instance(),
                     Tracker_FormElementFactory::instance(),
                     $projectMemberAdder,
-                    $userManager
+                    $userManager,
+                    $timetrackingPlugin ? new Timetracking\Admin\AdminDao() : null,
+                    new StaticMemberAdder()
                 );
             },
             TransferIssuesCommand::class => function ()

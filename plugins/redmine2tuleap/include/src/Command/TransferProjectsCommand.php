@@ -7,10 +7,13 @@ use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldFormatEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomValueColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineEnabledModuleColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineIssueColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineMemberColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineMemberRoleColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineProjectColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineProjectStatusEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineRoleColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineUserColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapProjectColumnEnum;
@@ -33,7 +36,6 @@ use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
 use Project;
 use ProjectManager;
-use Response;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tracker;
@@ -59,12 +61,14 @@ use Tracker_Tooltip;
 use Tracker_TooltipDao;
 use TrackerFactory;
 use Tuleap\Project\UGroups\Membership\DynamicUGroups\ProjectMemberAdder;
+use Tuleap\Project\UGroups\Membership\StaticUGroups\StaticMemberAdder;
 use Tuleap\Tracker\Creation\TrackerCreationSettings;
 use Tuleap\Tracker\Semantic\Timeframe\SemanticTimeframe;
 use Tuleap\Tracker\Semantic\Timeframe\SemanticTimeframeDao;
 use Tuleap\Tracker\TrackerColor;
 use Tracker_FormElement_Field;
 use UserManager;
+use Tuleap\Timetracking;
 
 class TransferProjectsCommand extends GenericTransferCommand
 {
@@ -107,6 +111,9 @@ class TransferProjectsCommand extends GenericTransferCommand
         RedmineCustomFieldFormatEnum::INT => TuleapTrackerFormElementTypeEnum::INT,
     ];
 
+    public const TIMETRACKING_ENABLED = 'timetracking_enabled';
+    public const TIMETRACKING_ENABLED_ROW = self::TIMETRACKING_ENABLED . '_row';
+
     /** @var RedmineCustomFieldRepository */
     private $cfRepo;
 
@@ -131,6 +138,12 @@ class TransferProjectsCommand extends GenericTransferCommand
     /** @var UserManager */
     private $userManager;
 
+    /** @var ?Timetracking\Admin\AdminDao */
+    private $timetrackingModuleDao;
+
+    /** @var StaticMemberAdder */
+    private $memberAdder;
+
     public static function getDefaultName()
     {
         return 'redmine2tuleap:projects:transfer';
@@ -153,7 +166,9 @@ class TransferProjectsCommand extends GenericTransferCommand
         TrackerFactory $trackerFactory,
         Tracker_FormElementFactory $trackerFormElementFactory,
         ProjectMemberAdder $projectMemberAdder,
-        UserManager $userManager
+        UserManager $userManager,
+        ?Timetracking\Admin\AdminDao $timetrackingModuleDao,
+        StaticMemberAdder $memberAdder
     )
     {
         parent::__construct($pluginDirectory, $redmineDb, $tuleapDb, $refRepo);
@@ -165,6 +180,8 @@ class TransferProjectsCommand extends GenericTransferCommand
         $this->trackerFormElementFactory = $trackerFormElementFactory;
         $this->projectMemberAdder = $projectMemberAdder;
         $this->userManager = $userManager;
+        $this->timetrackingModuleDao = $timetrackingModuleDao;
+        $this->memberAdder = $memberAdder;
     }
 
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
@@ -260,6 +277,13 @@ class TransferProjectsCommand extends GenericTransferCommand
             );
         }
 
+        $projectSelectQuery .= '
+            LEFT JOIN ' . RedmineTableEnum::ENABLED_MODULES . ' ' . self::TIMETRACKING_ENABLED_ROW . ' ON
+                ' . self::TIMETRACKING_ENABLED_ROW . '.' . RedmineEnabledModuleColumnEnum::PROJECT_ID . ' = ' . RedmineTableEnum::PROJECTS . '.' . RedmineProjectColumnEnum::ID . ' AND
+                ' . self::TIMETRACKING_ENABLED_ROW . '.' . RedmineEnabledModuleColumnEnum::NAME . ' = "issue_tracking"
+        ';
+        $projectSelect[] = self::TIMETRACKING_ENABLED_ROW . '.' . RedmineEnabledModuleColumnEnum::ID . ' as ' . self::TIMETRACKING_ENABLED;
+
         if ($alreadyCreatedProjectIds = $this->transferedRedmineIdList()) {
             $projectSelectQuery .= ' WHERE ' . EasyStatement::open()->in(
                 RedmineTableEnum::PROJECTS . '.' . RedmineProjectColumnEnum::ID . ' not in (?*)',
@@ -290,7 +314,7 @@ class TransferProjectsCommand extends GenericTransferCommand
             $redmineProjectId = $redmineProject[RedmineProjectColumnEnum::ID];
 
             try {
-                $tuleapProject = [
+                $tuleapProjectFields = [
                     TuleapProjectColumnEnum::GROUP_NAME => $redmineProject[RedmineProjectColumnEnum::NAME],
                     TuleapProjectColumnEnum::ACCESS => $redmineProject[RedmineProjectColumnEnum::IS_PUBLIC] ? Project::ACCESS_PUBLIC : Project::ACCESS_PRIVATE,
                     TuleapProjectColumnEnum::STATUS => $this->converStatus($redmineProject[RedmineProjectColumnEnum::STATUS]),
@@ -300,14 +324,15 @@ class TransferProjectsCommand extends GenericTransferCommand
                     TuleapProjectColumnEnum::TYPE => TuleapProjectTypeEnum::PROJECT,
                 ];
 
-                $projectAdded = $tuleapDb->insert(TuleapTableEnum::PROJECTS, $tuleapProject);
+                $projectAdded = $tuleapDb->insert(TuleapTableEnum::PROJECTS, $tuleapProjectFields);
 
                 if (!$projectAdded) {
                     $output->error(sprintf('Failed to create project "%s": %d %d %s', $redmineProject[RedmineProjectColumnEnum::ID], ...$tuleapDb->errorInfo()));
                     return -1;
                 }
 
-                $tuleapProjectId = $tuleapProject[TuleapProjectColumnEnum::GROUP_ID] = $tuleapDb->lastInsertId();
+                $tuleapProjectId = $tuleapProjectFields[TuleapProjectColumnEnum::GROUP_ID] = $tuleapDb->lastInsertId();
+                $tuleapProject = $this->projectManager->getProject($tuleapProjectId);
 
                 foreach ($redmineProjectExtraFieldToTuleap as $redmineCustomFieldId => $tuleapProjectExtraFieldId) {
                     $fieldKey = $this->getProjectExtraFieldValueAlias($tuleapProjectExtraFieldId);
@@ -323,7 +348,7 @@ class TransferProjectsCommand extends GenericTransferCommand
                     ]);
                 }
 
-                $this->configureProjectServices($tuleapProject);
+                $this->configureProjectServices($tuleapProjectFields);
 
                 if ($trackerTemplate === null) {
                     $trackerTemplate = $this->createTrackerTemplate($tuleapProjectId);
@@ -331,7 +356,9 @@ class TransferProjectsCommand extends GenericTransferCommand
                     $this->trackerFactory->duplicate($trackerTemplate->getGroupId(), $tuleapProjectId, null);
                 }
 
-                $this->transferMembers($redmineProjectId, $tuleapProjectId);
+                $this->transferMembers($redmineProjectId, $tuleapProject);
+
+                $this->enableTimetrackingIf($redmineProject[self::TIMETRACKING_ENABLED] > 0, $tuleapProject->getID());
 
                 $this->markAsTransfered((string) $redmineProjectId, (string) $tuleapProjectId);
             } catch (Exception $e) {
@@ -440,7 +467,7 @@ class TransferProjectsCommand extends GenericTransferCommand
         $trackerTemplate = new Tracker(
             null,
             $tuleapProjectId,
-            'Issues',
+            self::TRACKER_ITEM_NAME . 's',
             '',
             self::TRACKER_ITEM_NAME,
             true,
@@ -548,7 +575,11 @@ class TransferProjectsCommand extends GenericTransferCommand
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::LAST_UPDATE_DATE,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::UPDATED_ON,
-            ]
+            ],
+            [
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::FILE,
+                TuleapTrackerFieldColumnEnum::LABEL => RedmineTableEnum::ATTACHMENTS,
+            ],
         ];
 
         foreach ($this->cfRepo->allOfIssue(RedmineCustomFieldColumnEnum::ID) as $customFieldId => $customField) {
@@ -826,51 +857,86 @@ class TransferProjectsCommand extends GenericTransferCommand
         $reportRenderer->saveColumns($reportColumns);
     }
 
-    private function transferMembers(int $redmineProjectId, int $tuleapProjectId): void
+    private function transferMembers(int $redmineProjectId, Project $tuleapProject): void
     {
-        /** @var Response $Response */
-        global $Response;
+        require_once __DIR__.'/../../../../../src/www/project/admin/ugroup_utils.php';
+
+        $tuleapProjectId = $tuleapProject->getID();
 
         $redmineDb = $this->redmine();
 
-        $redmineProjectUserIds = $redmineDb->column(
+        $roleNames = $this->getRoleNames();
+
+        $members = $redmineDb->run(
             '
-                SELECT ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::USER_ID . '
-                FROM ' . RedmineTableEnum::MEMBERS . '
+                SELECT DISTINCT ' . implode(', ', [
+                    RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::USER_ID,
+                    RedmineTableEnum::MEMBER_ROLES . '.' . RedmineMemberRoleColumnEnum::ROLE_ID,
+                ]) . '
+                FROM ' . RedmineTableEnum::MEMBER_ROLES . '
+                LEFT JOIN ' . RedmineTableEnum::MEMBERS . ' ON
+                    ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::ID . ' = ' . RedmineTableEnum::MEMBER_ROLES . '.' . RedmineMemberRoleColumnEnum::MEMBER_ID . '
                 LEFT JOIN ' . RedmineTableEnum::USERS . ' ON
                     ' . RedmineTableEnum::USERS . '.' . RedmineUserColumnEnum::ID . ' = ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::USER_ID . '
                 WHERE
                     ' . RedmineTableEnum::MEMBERS . '.' . RedmineMemberColumnEnum::PROJECT_ID . ' = ? AND
                     ' . RedmineTableEnum::USERS . '.`' . RedmineUserColumnEnum::TYPE . '` = "User"
             ',
-            [ $redmineProjectId ]
+            $redmineProjectId
         );
 
-        $tuleapProject = $this->projectManager->getProject($tuleapProjectId);
-        foreach ($redmineProjectUserIds as $redmineProjectUserId) {
-            $tuleapUserId = $this->refRepo->getTuleapUserId($redmineProjectUserId, false);
-            if (!$tuleapUserId) {
-                throw new Exception(sprintf('Failed to find tuleap user by redmine user_id %d. Transfer users first', $redmineProjectUserId));
-            }
+        $projectGroups = [];
+        foreach (array_map('array_values', $members) as [$redmineUserId, $redmineRoleId]) {
+            // creates a group for each role
+            $projectGroups[$redmineRoleId] = $projectGroups[$redmineRoleId] ?? ugroup_create(
+                $tuleapProjectId,
+                'role_' . $redmineRoleId,
+                $roleNames[$redmineRoleId],
+                'cx_empty'
+            );
 
-            $tuleapUser = $this->userManager->getUserById($tuleapUserId);
-            if (!$tuleapUser) {
-                throw new Exception(sprintf('Failed to find redmine user #%d in tuleap database', $redmineProjectUserId));
-            }
+            $tuleapUserId = $this->refRepo->getTuleapUserId($redmineUserId);
 
-            $this->projectMemberAdder->addProjectMember($tuleapUser, $tuleapProject);
-
-            if ($Response->feedbackHasErrors()) {
-                throw new Exception(
-                    sprintf(
-                        'Failed to link user #%d to project #%d: %s',
-                        $tuleapUser->getId(),
-                        $tuleapProjectId,
-                        implode('; ', $Response->getFeedbackErrors()
-                        )
-                    )
-                );
-            }
+            $this->memberAdder->addUserToStaticGroup($tuleapProjectId, $projectGroups[$redmineRoleId], $tuleapUserId);
+            $this->throwOnResponseHasErrors(
+                sprintf(
+                    'Failed to add user T%d (R%d) as project member of Redmine role %d (G%d) in project T%d (R%d)',
+                    $tuleapUserId,
+                    $redmineUserId,
+                    $redmineRoleId,
+                    $projectGroups[$redmineRoleId],
+                    $tuleapProjectId,
+                    $redmineProjectId
+                )
+            );
         }
+    }
+
+    private function getRoleNames(): array
+    {
+        static $roles;
+        if ($roles === null) {
+            $roles = $this->redmine()->run(
+                'SELECT ' . implode(', ', [
+                    RedmineRoleColumnEnum::ID,
+                    RedmineRoleColumnEnum::NAME,
+                ]) . '
+                FROM ' . RedmineTableEnum::ROLES
+            );
+
+            $roles = array_column($roles, RedmineRoleColumnEnum::NAME, RedmineRoleColumnEnum::ID);
+        }
+
+        return $roles;
+    }
+
+    private function enableTimetrackingIf(bool $itsEnabledInRedmine, int $tuleapProjectId): void
+    {
+        if (!$this->timetrackingModuleDao || !$itsEnabledInRedmine) {
+            return;
+        }
+
+        $projectObject = $this->trackerFactory->getTrackerByShortnameAndProjectId(self::TRACKER_ITEM_NAME, $tuleapProjectId);
+        $this->timetrackingModuleDao->enableTimetrackingForTracker($projectObject->getId());
     }
 }

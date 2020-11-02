@@ -1,4 +1,5 @@
 {
+    "redmineDirectory": "/some/path/to/redmine/directory",
     "defaultRedmineUserId": "1",
     "language": "ru_RU"
 }

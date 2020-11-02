@@ -15,6 +15,7 @@ class TransferConfigJsonFileBuilder
 
         $config = json_decode(file_get_contents($configFile), true);
         return new TransferConfig(
+            $config['redmineDirectory'],
             $config['defaultRedmineUserId'],
             $config['language'] ?: BaseLanguage::DEFAULT_LANG,
             $config['excludedCustomFields'] ?? []

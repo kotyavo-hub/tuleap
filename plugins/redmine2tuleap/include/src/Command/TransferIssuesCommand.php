@@ -25,8 +25,8 @@ use Maximaster\Redmine2TuleapPlugin\Repository\RedmineEnumerationRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineIssueStatusRepository;
 use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
-use PFUser;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tracker;
 use Tracker_Artifact;
@@ -47,6 +47,8 @@ use UserManager;
 
 class TransferIssuesCommand extends GenericTransferCommand
 {
+    const OPTION_LIMIT = 'limit';
+
     /** @var Tracker_ArtifactFactory */
     private $trackerArtifactFactory;
 
@@ -123,6 +125,15 @@ class TransferIssuesCommand extends GenericTransferCommand
         $this->userManager = $userManager;
     }
 
+    protected function configure()
+    {
+        parent::configure();
+
+        $this->getDefinition()->addOptions([
+            new InputOption(self::OPTION_LIMIT, null, InputOption::VALUE_REQUIRED, 'Limit imported issues number')
+        ]);
+    }
+
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
     {
         $redmineDb = $this->redmine();
@@ -133,7 +144,7 @@ class TransferIssuesCommand extends GenericTransferCommand
             return -1;
         }
 
-        $importedProjectIds = $this->refRepo->idsOfType(EntityTypeEnum::PROJECT());
+        $importedProjectIds = $this->refRepo->redmineIdsOfType(EntityTypeEnum::PROJECT());
         if (empty($importedProjectIds)) {
             $output->warning('Transfer some projects first');
             return 0;
@@ -183,6 +194,10 @@ class TransferIssuesCommand extends GenericTransferCommand
         $condition->andIn(RedmineIssueColumnEnum::PROJECT_ID . ' in (?*)', $importedProjectIds);
 
         $issuesQuery .= ' WHERE ' . $condition->sql();
+
+        if ($limit = $input->getOption(self::OPTION_LIMIT)) {
+            $issuesQuery .= ' LIMIT ' . $limit;
+        }
 
         $redmineIssues = $redmineDb->run($issuesQuery, ...$condition->values());
 
@@ -494,15 +509,7 @@ class TransferIssuesCommand extends GenericTransferCommand
         // Unfortunately, we have to do it this way, because the object representation doesn't contain formElement_type
         $formFieldRepository = new Tracker_FormElement_FieldDao();
         $fields = iterator_to_array($formFieldRepository->searchByTrackerId($trackerId));
-        $trackerFields[$trackerId] = array_combine(
-            array_map(
-                function (array $field) {
-                    return $field[TuleapTrackerFieldColumnEnum::LABEL];
-                },
-                $fields
-            ),
-            $fields
-        );
+        $trackerFields[$trackerId] = array_combine(array_column($fields, TuleapTrackerFieldColumnEnum::LABEL), $fields);
 
         return $trackerFields[$trackerId];
     }
