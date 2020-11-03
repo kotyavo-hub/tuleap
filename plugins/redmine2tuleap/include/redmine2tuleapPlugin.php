@@ -3,6 +3,7 @@
 use Maximaster\Redmine2TuleapPlugin\Command\TransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferIssuesCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferProjectsCommand;
+use Maximaster\Redmine2TuleapPlugin\Command\TransferTimeEntriesCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferUsersCommand;
 use Maximaster\Redmine2TuleapPlugin\Enum\DatabaseEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapPluginEnum;
@@ -68,8 +69,13 @@ class redmine2tuleapPlugin extends Plugin
         $userPermDao = new UserPermissionsDao();
         $projectMemberAdder = ProjectMemberAdderWithoutStatusCheckAndNotifications::build();
         $userManager = UserManager::instance();
+        $trackerFactory = TrackerFactory::instance();
 
         $textileParser = new Textile\Parser();
+
+        $includePlugin = function (TuleapPluginEnum $pluginName) use ($pluginManager) {
+            return $pluginManager->getPluginByName($pluginName->getValue());
+        };
 
         $subTransferCommands = [
             TransferUsersCommand::class => function () use (
@@ -102,10 +108,10 @@ class redmine2tuleapPlugin extends Plugin
                     $redmineEnumerationRepository,
                     $projectMemberAdder,
                     $userManager,
-                    $pluginManager
+                    $includePlugin
                 ) {
 
-                $timetrackingPlugin = $pluginManager->getPluginByName(TuleapPluginEnum::TIMETRACKING);
+                $timetrackingPlugin = $includePlugin(TuleapPluginEnum::TIMETRACKING());
 
                 return new TransferProjectsCommand(
                     $pluginDirectory,
@@ -131,6 +137,7 @@ class redmine2tuleapPlugin extends Plugin
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
                     $trackerArtifactFactory,
+                    $trackerFactory,
                     $cfRepo,
                     $redmineIssueStatusRepo,
                     $redmineEnumerationRepository,
@@ -145,7 +152,7 @@ class redmine2tuleapPlugin extends Plugin
                     $tuleapDb,
                     $redmine2TuleapReferenceRepo,
                     $trackerArtifactFactory,
-                    TrackerFactory::instance(),
+                    $trackerFactory,
                     $cfRepo,
                     Tracker_FormElementFactory::instance(),
                     $redmineIssueStatusRepo,
@@ -154,6 +161,29 @@ class redmine2tuleapPlugin extends Plugin
                     $redmine2TuleapTrackerFieldListBindUsersBackupRepo,
                     $userPermDao,
                     $userManager
+                );
+            },
+            TransferTimeEntriesCommand::class => function () use (
+                $trackerFactory,
+                $redmine2TuleapReferenceRepo,
+                $tuleapDb,
+                $redmineDb,
+                $pluginDirectory,
+                $includePlugin
+            ) {
+                $timetrackingPlugin = $includePlugin(TuleapPluginEnum::TIMETRACKING());
+                if (!$timetrackingPlugin) {
+                    throw new DomainException('Timetracking plugin must be installed to use this command');
+                }
+
+                return new TransferTimeEntriesCommand(
+                    $pluginDirectory,
+                    $redmineDb,
+                    $tuleapDb,
+                    $redmine2TuleapReferenceRepo,
+                    new Timetracking\Time\TimeDao(),
+                    new Tracker_ArtifactDao(),
+                    $trackerFactory
                 );
             },
         ];

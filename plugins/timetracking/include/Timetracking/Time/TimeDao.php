@@ -25,12 +25,15 @@ use Tuleap\DB\DataAccessObject;
 
 class TimeDao extends DataAccessObject
 {
-    public function addTime($user_id, $artifact_id, $day, $minutes, $step)
+    public function addTime($user_id, $artifact_id, $day, $minutes, $step): int
     {
-        $sql = 'REPLACE INTO plugin_timetracking_times (user_id, artifact_id, minutes, step, day)
-                VALUES (?, ?, ?, ?, ?)';
+        $db = $this->getDB();
 
-        $this->getDB()->run($sql, $user_id, $artifact_id, $minutes, $step, $day);
+        $db->insert('plugin_timetracking_times', compact(
+            'user_id', 'artifact_id', 'day', 'minutes', 'step'
+        ));
+
+        return (int) $db->lastInsertId();
     }
 
     public function deleteTime($time_id)
