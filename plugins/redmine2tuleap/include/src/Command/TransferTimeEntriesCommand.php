@@ -56,6 +56,8 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
         $this->timeDao = $timeDao;
         $this->artifactDao = $artifactDao;
         $this->trackerFactory = $trackerFactory;
+
+        $this->artifactDao->enableExceptionsOnError();
     }
 
     protected function transfer(InputInterface $input, SymfonyStyle $output): int

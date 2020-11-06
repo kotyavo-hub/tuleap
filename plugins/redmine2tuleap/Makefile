@@ -10,13 +10,13 @@ prepare: dump-dbs prepare-database prepare-vendor
 .PHONY: dump-redmine-db
 dump-redmine-db:
 	test -n "$(to)"
-	ssh root@redmine.maximaster.ru "mysqldump -q redmine_new" > $(to)
+	ssh root@redmine.maximaster.ru "mysqldump -q redmine_new" > $(PWD)/../../$(to)
 
 .PHONY: dump-tuleap-db
 dump-tuleap-db:
 	test -n "$(to)"
-	cd ../ && docker-compose exec db mysqldump -q -uroot -p$(MYSQL_ROOT_PASSWORD) tuleap 2>/dev/null > $(PWD)/$(to)
-	sed -i '1d' $(to)
+	cd ../ && docker-compose exec db mysqldump -q -uroot -p$(MYSQL_ROOT_PASSWORD) tuleap 2>/dev/null > $(PWD)/../../$(to)
+	sed -i '1d' $(PWD)/../../$(to)
 
 .PHONY: dump-dbs
 dump-dbs:
@@ -49,7 +49,7 @@ debug-transfer:
 
 .PHONY: data-transfer
 data-transfer:
-	make partial-transfer of="*"
+	make partial-transfer of=all
 
 .PHONY: partial-transfer
 partial-transfer:
@@ -57,11 +57,11 @@ partial-transfer:
 
 .PHONY: reload-redmine-db
 reload-redmine-db:
-	make transfer with="--sql='redmine:redmine.sql'"
+	make transfer with="--sql='redmine:$(from)'"
 
 .PHONY: reload-tuleap-db
 reload-tuleap-db:
-	make transfer with="--sql='tuleap:tuleap.sql'"
+	make transfer with="--sql='tuleap:$(from)'"
 
 .PHONY: reload-db
 reload-db: reload-redmine-db reload-tuleap-db

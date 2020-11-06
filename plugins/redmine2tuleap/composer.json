@@ -1,5 +1,6 @@
 {
   "require": {
+    "ext-fileinfo": "*",
     "ext-mysqli": "*",
     "ext-json": "*",
     "guzzlehttp/guzzle": "^7.0",
@@ -8,7 +9,8 @@
     "symfony/console": "^5.0",
     "paragonie/easydb": "^2",
     "doctrine/collections": "^1.6",
-    "netcarver/textile": "^3.7"
+    "netcarver/textile": "^3.7",
+    "functional-php/named-parameters": "^0.0.2"
   },
   "autoload": {
     "psr-4": {

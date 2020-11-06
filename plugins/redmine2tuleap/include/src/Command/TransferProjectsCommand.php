@@ -523,10 +523,6 @@ class TransferProjectsCommand extends GenericTransferCommand
                 ],
             ],
             [
-                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::TEXT,
-                TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::DESCRIPTION,
-            ],
-            [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::STATUS_ID,
                 TuleapTrackerFieldColumnEnum::REQUIRED => true,
@@ -541,6 +537,14 @@ class TransferProjectsCommand extends GenericTransferCommand
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::PRIORITY_ID,
                 self::BIND_TYPE => Tracker_FormElement_Field_List_Bind_Static::TYPE,
                 self::BIND => ['add' => implode("\n", $this->enumRepo->allIssuePriorityNames())],
+            ],
+            [
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::TEXT,
+                TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::DESCRIPTION,
+            ],
+            [
+                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::FILE,
+                TuleapTrackerFieldColumnEnum::LABEL => RedmineTableEnum::ATTACHMENTS,
             ],
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::SELECT_BOX,
@@ -575,10 +579,6 @@ class TransferProjectsCommand extends GenericTransferCommand
             [
                 TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::LAST_UPDATE_DATE,
                 TuleapTrackerFieldColumnEnum::LABEL => RedmineIssueColumnEnum::UPDATED_ON,
-            ],
-            [
-                TuleapTrackerFieldColumnEnum::FORMELEMENT_TYPE => TuleapTrackerFormElementTypeEnum::FILE,
-                TuleapTrackerFieldColumnEnum::LABEL => RedmineTableEnum::ATTACHMENTS,
             ],
         ];
 

@@ -4,6 +4,7 @@ namespace Maximaster\Redmine2TuleapPlugin\Config;
 
 use BaseLanguage;
 use Exception;
+use function FunctionalPHP\NamedParameters\construct;
 
 class TransferConfigJsonFileBuilder
 {
@@ -13,12 +14,6 @@ class TransferConfigJsonFileBuilder
             throw new Exception(sprintf('Failed to load file "%s"', $configFile));
         }
 
-        $config = json_decode(file_get_contents($configFile), true);
-        return new TransferConfig(
-            $config['redmineDirectory'],
-            $config['defaultRedmineUserId'],
-            $config['language'] ?: BaseLanguage::DEFAULT_LANG,
-            $config['excludedCustomFields'] ?? []
-        );
+        return construct(TransferConfig::class, json_decode(file_get_contents($configFile), true));
     }
 }
