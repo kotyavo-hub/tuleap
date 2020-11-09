@@ -1,6 +1,7 @@
 <?php
 
 use Maximaster\Redmine2TuleapPlugin\Command\TransferCommand;
+use Maximaster\Redmine2TuleapPlugin\Command\TransferIssueNotesCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferIssuesCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferProjectsCommand;
 use Maximaster\Redmine2TuleapPlugin\Command\TransferTimeEntriesCommand;
@@ -164,11 +165,11 @@ class redmine2tuleapPlugin extends Plugin
                 );
             },
             TransferTimeEntriesCommand::class => function () use (
+                $pluginDirectory,
                 $trackerFactory,
                 $redmine2TuleapReferenceRepo,
                 $tuleapDb,
                 $redmineDb,
-                $pluginDirectory,
                 $includePlugin
             ) {
                 $timetrackingPlugin = $includePlugin(TuleapPluginEnum::TIMETRACKING());
@@ -184,6 +185,23 @@ class redmine2tuleapPlugin extends Plugin
                     new Timetracking\Time\TimeDao(),
                     new Tracker_ArtifactDao(),
                     $trackerFactory
+                );
+            },
+            TransferIssueNotesCommand::class => function () use (
+                $pluginDirectory,
+                $tuleapDb,
+                $redmineDb,
+                $redmine2TuleapReferenceRepo,
+                $textileParser
+            ) {
+                return new TransferIssueNotesCommand(
+                    $pluginDirectory,
+                    $redmineDb,
+                    $tuleapDb,
+                    $redmine2TuleapReferenceRepo,
+                    new Tracker_Artifact_ChangesetDao(),
+                    new Tracker_Artifact_Changeset_CommentDao(),
+                    $textileParser
                 );
             },
         ];
@@ -207,8 +225,6 @@ class redmine2tuleapPlugin extends Plugin
                 $subTransferCommandNames
             );
         });
-
-
     }
 
     public function getPluginInfo()

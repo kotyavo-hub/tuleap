@@ -29,13 +29,11 @@ use Maximaster\Redmine2TuleapPlugin\Repository\RedmineIssueStatusRepository;
 use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
 use Project;
-use ReflectionClass;
 use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tracker_Artifact;
 use Tracker_Artifact_ChangesetValue_Text;
@@ -225,9 +223,6 @@ class TransferIssuesCommand extends GenericTransferCommand
         }
 
         $condition->andIn(RedmineIssueColumnEnum::PROJECT_ID . ' in (?*)', $transferedProjectIds);
-
-        // debug
-        $condition->andWith(RedmineIssueColumnEnum::ID . ' > 5690');
 
         $issuesQuery .= '
             WHERE ' . $condition->sql() . '

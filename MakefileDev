@@ -1,5 +1,5 @@
 .PHONY: first-start
-first-start: wipe-containers prepare-backend prepare-fronted dev-setup start post-checkout
+first-start: dev-setup wipe-containers prepare-backend prepare-fronted start post-checkout
 
 .PHONY: wipe-containers
 wipe-containers:
@@ -34,3 +34,18 @@ follow-error-logs:
 .PHONY: exec
 exec:
 	docker-compose exec web tuleap $(cmd)
+
+.PHONY: restart
+restart:
+	docker-compose stop
+	make start
+
+.PHONY: xdebug-off
+xdebug-off:
+	docker-compose exec web mv /etc/opt/remi/php73/php.d/15-xdebug.ini /etc/opt/remi/php73/php.d/15-xdebug.ini.disabled
+	make -f MakefileDev restart
+
+.PHONY: xdebug-on
+xdebug-on:
+	docker-compose exec web mv /etc/opt/remi/php73/php.d/15-xdebug.ini.disabled /etc/opt/remi/php73/php.d/15-xdebug.ini
+	make -f MakefileDev restart

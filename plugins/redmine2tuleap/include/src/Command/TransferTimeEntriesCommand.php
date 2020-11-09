@@ -35,7 +35,7 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
 
     public static function getDefaultName()
     {
-        return 'redmine2tuleap:time_entries:transfer';
+        return 'redmine2tuleap:time-entries:transfer';
     }
 
     protected function entityType(): EntityTypeEnum
@@ -81,6 +81,8 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
         if ($forIssues) {
             // it's possible that time_entries.project_id whould be wrong, so we fetching it from issues
             $selected[] = RedmineTableEnum::ISSUES . '.' . RedmineIssueColumnEnum::PROJECT_ID;
+
+            $selected[] = RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::ISSUE_ID;
 
             $joins = '
                 LEFT JOIN ' . RedmineTableEnum::ISSUES . ' ON
