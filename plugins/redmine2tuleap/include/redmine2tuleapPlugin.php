@@ -17,7 +17,7 @@ use Symfony\Component\Console\Command\Command;
 use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\DB\DBFactory;
 use Netcarver\Textile;
-use Tuleap\Project\UGroups\Membership\DynamicUGroups\ProjectMemberAdderWithoutStatusCheckAndNotifications;
+use Tuleap\Project\UGroups\Membership\DynamicUGroups\AddProjectMember;
 use Tuleap\Project\UGroups\Membership\StaticUGroups\StaticMemberAdder;
 use Tuleap\Project\UserPermissionsDao;
 use Tuleap\Timetracking;
@@ -68,7 +68,6 @@ class redmine2tuleapPlugin extends Plugin
         $pluginManager = PluginManager::instance();
         $trackerArtifactFactory = Tracker_ArtifactFactory::instance();
         $userPermDao = new UserPermissionsDao();
-        $projectMemberAdder = ProjectMemberAdderWithoutStatusCheckAndNotifications::build();
         $userManager = UserManager::instance();
         $trackerFactory = TrackerFactory::instance();
 
@@ -107,7 +106,6 @@ class redmine2tuleapPlugin extends Plugin
                     $cfRepo,
                     $redmineIssueStatusRepo,
                     $redmineEnumerationRepository,
-                    $projectMemberAdder,
                     $userManager,
                     $includePlugin
                 ) {
@@ -125,10 +123,11 @@ class redmine2tuleapPlugin extends Plugin
                     ProjectManager::instance(),
                     TrackerFactory::instance(),
                     Tracker_FormElementFactory::instance(),
-                    $projectMemberAdder,
+                    new StaticMemberAdder(),
+                    AddProjectMember::build(),
                     $userManager,
-                    $timetrackingPlugin ? new Timetracking\Admin\AdminDao() : null,
-                    new StaticMemberAdder()
+                    new UGroupManager(),
+                    $timetrackingPlugin ? new Timetracking\Admin\AdminDao() : null
                 );
             },
             TransferIssuesCommand::class => function ()

@@ -36,6 +36,7 @@ use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
 use Project;
 use ProjectManager;
+use ProjectUGroup;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Tracker;
@@ -60,13 +61,19 @@ use Tracker_SemanticManager;
 use Tracker_Tooltip;
 use Tracker_TooltipDao;
 use TrackerFactory;
-use Tuleap\Project\UGroups\Membership\DynamicUGroups\ProjectMemberAdder;
+use Tuleap\Project\Admin\ProjectUGroup\CannotCreateUGroupException;
+use Tuleap\Project\UGroups\Membership\DynamicUGroups\AddProjectMember;
+use Tuleap\Project\UGroups\Membership\DynamicUGroups\AlreadyProjectMemberException;
+use Tuleap\Project\UGroups\Membership\InvalidProjectException;
 use Tuleap\Project\UGroups\Membership\StaticUGroups\StaticMemberAdder;
+use Tuleap\Project\UGroups\Membership\UserIsAnonymousException;
 use Tuleap\Tracker\Creation\TrackerCreationSettings;
 use Tuleap\Tracker\Semantic\Timeframe\SemanticTimeframe;
 use Tuleap\Tracker\Semantic\Timeframe\SemanticTimeframeDao;
 use Tuleap\Tracker\TrackerColor;
 use Tracker_FormElement_Field;
+use UGroup_Invalid_Exception;
+use UGroupManager;
 use UserManager;
 use Tuleap\Timetracking;
 
@@ -132,17 +139,20 @@ class TransferProjectsCommand extends GenericTransferCommand
     /** @var RedmineEnumerationRepository */
     private $enumRepo;
 
-    /** @var ProjectMemberAdder */
-    private $projectMemberAdder;
+    /** @var StaticMemberAdder */
+    private $memberAdder;
+
+    /** @var AddProjectMember */
+    private $addProjectMember;
 
     /** @var UserManager */
     private $userManager;
 
+    /** @var UGroupManager */
+    private $ugroupManager;
+
     /** @var ?Timetracking\Admin\AdminDao */
     private $timetrackingModuleDao;
-
-    /** @var StaticMemberAdder */
-    private $memberAdder;
 
     public static function getDefaultName()
     {
@@ -165,10 +175,11 @@ class TransferProjectsCommand extends GenericTransferCommand
         ProjectManager $projectManager,
         TrackerFactory $trackerFactory,
         Tracker_FormElementFactory $trackerFormElementFactory,
-        ProjectMemberAdder $projectMemberAdder,
+        StaticMemberAdder $memberAdder,
+        AddProjectMember $addProjectMember,
         UserManager $userManager,
-        ?Timetracking\Admin\AdminDao $timetrackingModuleDao,
-        StaticMemberAdder $memberAdder
+        UGroupManager $ugroupManager,
+        ?Timetracking\Admin\AdminDao $timetrackingModuleDao
     )
     {
         parent::__construct($pluginDirectory, $redmineDb, $tuleapDb, $refRepo);
@@ -178,10 +189,11 @@ class TransferProjectsCommand extends GenericTransferCommand
         $this->projectManager = $projectManager;
         $this->trackerFactory = $trackerFactory;
         $this->trackerFormElementFactory = $trackerFormElementFactory;
-        $this->projectMemberAdder = $projectMemberAdder;
-        $this->userManager = $userManager;
-        $this->timetrackingModuleDao = $timetrackingModuleDao;
         $this->memberAdder = $memberAdder;
+        $this->addProjectMember = $addProjectMember;
+        $this->userManager = $userManager;
+        $this->ugroupManager = $ugroupManager;
+        $this->timetrackingModuleDao = $timetrackingModuleDao;
     }
 
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
@@ -857,6 +869,15 @@ class TransferProjectsCommand extends GenericTransferCommand
         $reportRenderer->saveColumns($reportColumns);
     }
 
+    /**
+     * @param int $redmineProjectId
+     * @param Project $tuleapProject
+     *
+     * @throws InvalidProjectException
+     * @throws UserIsAnonymousException
+     * @throws UGroup_Invalid_Exception
+     * @throws Exception
+     */
     private function transferMembers(int $redmineProjectId, Project $tuleapProject): void
     {
         require_once __DIR__.'/../../../../../src/www/project/admin/ugroup_utils.php';
@@ -885,19 +906,45 @@ class TransferProjectsCommand extends GenericTransferCommand
             $redmineProjectId
         );
 
+        $projectMemberIds = [];
+
+        /** @var ProjectUGroup[] $projectGroups */
         $projectGroups = [];
         foreach (array_map('array_values', $members) as [$redmineUserId, $redmineRoleId]) {
-            // creates a group for each role
-            $projectGroups[$redmineRoleId] = $projectGroups[$redmineRoleId] ?? ugroup_create(
-                $tuleapProjectId,
-                'role_' . $redmineRoleId,
-                $roleNames[$redmineRoleId],
-                'cx_empty'
-            );
+            // create a group for each role
+            if (empty($projectGroups[$redmineRoleId])) {
+                try {
+                    /** @var int $ugroupId */
+                    $ugroupId = ugroup_create(
+                        $tuleapProjectId,
+                        'role_' . $redmineRoleId,
+                        $roleNames[$redmineRoleId],
+                        'cx_empty'
+                    );
+
+                    $projectGroups[$redmineRoleId] = $ugroupId;
+                } catch (CannotCreateUGroupException $e) {
+                    throw new Exception(sprintf('Failed to create user group for role %d: %s', $redmineRoleId, $e->getMessage()));
+                }
+            }
 
             $tuleapUserId = $this->refRepo->getTuleapUserId($redmineUserId);
 
             $this->memberAdder->addUserToStaticGroup($tuleapProjectId, $projectGroups[$redmineRoleId], $tuleapUserId);
+
+            try {
+                if (!in_array($tuleapUserId, $projectMemberIds)) {
+                    $this->addProjectMember->addProjectMember(
+                        $this->userManager->getUserById($tuleapUserId),
+                        $tuleapProject
+                    );
+
+                    $projectMemberIds[] = $tuleapUserId;
+                }
+            } catch (AlreadyProjectMemberException $e) {
+                continue;
+            }
+
             $this->throwOnResponseHasErrors(
                 sprintf(
                     'Failed to add user T%d (R%d) as project member of Redmine role %d (G%d) in project T%d (R%d)',

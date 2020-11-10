@@ -347,7 +347,13 @@ class timetrackingPlugin extends PluginWithLegacyInternalRouting // @codingStand
     public function collectCLICommands(CLICommandsCollector $commandCollector)
     {
         $commandCollector->addCommand(UpdateTimetrackingPermissionsCommand::getDefaultName(), function () {
-            return new UpdateTimetrackingPermissionsCommand();
+            return new UpdateTimetrackingPermissionsCommand(
+                ProjectManager::instance(),
+                TrackerFactory::instance(),
+                new TimetrackingUgroupDao(),
+                new ProjectDao(),
+                new UGroupDao()
+            );
         });
     }
 }

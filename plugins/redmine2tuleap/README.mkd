@@ -22,10 +22,7 @@ make transfer of=all
 
 * Users
 * Projects
-  * Members
-  * Member groups
-  * Issues
-    * Comments
+  * Members with assigned project roles
+  * Issues with their comments
   * Time entries
-  * Wiki pages
-  * Attachments (issue, wiki page)
+

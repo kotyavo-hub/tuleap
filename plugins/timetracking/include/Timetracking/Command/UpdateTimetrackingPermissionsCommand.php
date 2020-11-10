@@ -2,12 +2,9 @@
 
 namespace Tuleap\Timetracking\Command;
 
-use Codendi_Request;
 use DataAccessResult;
-use Exception;
 use ProjectDao;
 use ProjectManager;
-use ProjectUGroup;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -15,18 +12,17 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use TrackerFactory;
-use TrackerManager;
 use Tuleap\Timetracking\Admin\TimetrackingUgroupDao;
 use UGroupDao;
-use UGroupManager;
-use UserDao;
 
 class UpdateTimetrackingPermissionsCommand extends Command
 {
     const ARGUMENT_PROJECTS_ALL = 'all';
     const ARGUMENT_PROJECTS = 'projects';
     const OPTION_GRANT_WRITER = 'grant-writer';
-    const OPTION_GRANT_READER = 'grant-writer';
+    const OPTION_GRANT_READER = 'grant-reader';
+    const OPTION_REFUSE_WRITER = 'refuse-writer';
+    const OPTION_REFUSE_READER = 'refuse-reader';
 
     /** @var TimetrackingUgroupDao */
     private $timetrackingUgroupDao;
@@ -37,31 +33,31 @@ class UpdateTimetrackingPermissionsCommand extends Command
     /** @var ProjectManager */
     private $projectManager;
 
-    /** @var TrackerManager */
-    private $trackerManager;
-
     /** @var TrackerFactory */
     private $trackerFactory;
 
     /** @var UGroupDao */
     private $ugroupDao;
 
-    /** @var UGroupManager */
-    private $ugroupManager;
-
-    /** @var UserDao */
-    private $userDao;
-
     public static function getDefaultName()
     {
         return 'timetracking:permissions:update';
     }
 
-    public function __construct(TimetrackingUgroupDao $timetrackingUgroupDao)
-    {
+    public function __construct(
+        ProjectManager $projectManager,
+        TrackerFactory $trackerFactory,
+        TimetrackingUgroupDao $timetrackingUgroupDao,
+        ProjectDao $projectDao,
+        UGroupDao $ugroupDao
+    ) {
         parent::__construct();
 
+        $this->projectManager = $projectManager;
+        $this->trackerFactory = $trackerFactory;
         $this->timetrackingUgroupDao = $timetrackingUgroupDao;
+        $this->projectDao = $projectDao;
+        $this->ugroupDao = $ugroupDao;
     }
 
     protected function configure()
@@ -79,16 +75,29 @@ class UpdateTimetrackingPermissionsCommand extends Command
         $def->setOptions([
             new InputOption(
                 self::OPTION_GRANT_WRITER,
-                'w',
+                null,
                 InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
-                'Grant write permission to group with specified name'
+                'Grant write permission to an user group with specified name'
             ),
             new InputOption(
                 self::OPTION_GRANT_READER,
-                'r',
+                null,
                 InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
-                'Grant read permission to group with specified name'
+                'Grant read permission to an user group with specified name'
             ),
+            new InputOption(
+                self::OPTION_REFUSE_WRITER,
+                null,
+                InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
+                'Refuse write permission to an user group with specified name'
+            ),
+            new InputOption(
+                self::OPTION_REFUSE_READER,
+                null,
+                InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED,
+                'Refuse read permission to an user group with specified name'
+            ),
+
         ]);
     }
 
@@ -110,8 +119,10 @@ class UpdateTimetrackingPermissionsCommand extends Command
             return 0;
         }
 
-        $newWriters = $this->convertUserNamesToIds($input->getOption(self::OPTION_GRANT_WRITER));
-        $newReaders = $this->convertUserNamesToIds($input->getOption(self::OPTION_GRANT_READER));
+        $projectsCnt = count($projectUnixNames);
+        $ss->section(sprintf('Processing %d project%s', $projectsCnt, $projectsCnt > 1 ? 's' : ''));
+
+        $progress = $ss->createProgressBar($projectsCnt);
 
         foreach ($projectUnixNames as $projectUnixName) {
             $project = $this->projectManager->getProjectByUnixName($projectUnixName);
@@ -120,66 +131,57 @@ class UpdateTimetrackingPermissionsCommand extends Command
                 return -1;
             }
 
-            /** @var ProjectUGroup[] $projectUgroups */
-            $projectUGroups = $this->ugroupManager->getUgroupsById($project);
-            $ugroupIdByName = array_combine(
-                array_map(
-                    function (ProjectUGroup $projectUGroup) {
-                        return $projectUGroup->getName();
-                    },
-                    $projectUGroups
-                ),
-                array_map(
-                    function (ProjectUGroup $projectUGroup) {
-                        return $projectUGroup->getId();
-                    },
-                    $projectUGroups
-                )
-            );
+            $grantWriters = $this->convertUGroupNamesToIds($project->group_id, $input->getOption(self::OPTION_GRANT_WRITER));
+            $refuseWriters = $this->convertUGroupNamesToIds($project->group_id, $input->getOption(self::OPTION_REFUSE_WRITER));
+            $grantReaders = $this->convertUGroupNamesToIds($project->group_id, $input->getOption(self::OPTION_GRANT_READER));
+            $refuseReaders = $this->convertUGroupNamesToIds($project->group_id, $input->getOption(self::OPTION_REFUSE_READER));
 
             foreach ($this->trackerFactory->getTrackersByGroupId($project->getID()) as $tracker) {
-                // $this->ugroupDao->searchByGroupId()->getResult();
+                if ($grantWriters || $refuseWriters) {
+                    $currentWriters = array_column($this->timetrackingUgroupDao->getWriters($tracker->id), 'ugroup_id');
+                    $updatedWriters = $this->getUpdatedList($currentWriters, $grantWriters, $refuseWriters);
+                    if ($updatedWriters !== $currentWriters) {
+                        $this->timetrackingUgroupDao->saveWriters($tracker->id, $updatedWriters);
+                    }
+                }
 
-                // $this->timetrackingUgroupDao
+                if ($grantReaders || $refuseReaders) {
+                    $currentReaders = array_column($this->timetrackingUgroupDao->getReaders($tracker->id), 'ugroup_id');
+                    $updatedReaders = $this->getUpdatedList($currentReaders, $grantReaders, $refuseReaders);
+                    if ($updatedReaders !== $currentReaders) {
+                        $this->timetrackingUgroupDao->saveReaders($tracker->id, $updatedReaders);
+                    }
+                }
             }
-        }
 
-
-
-        $this->adminController->editTimetrackingAdminSettings(null, new Codendi_Request([
-            'enable_timetracking' => true,
-            'write_ugroups' => [],
-            'read_ugroups' => [],
-        ]));
-
-        global $Response;
-        if ($Response->feedbackHasErrors()) {
-            $ss->error($Response->_feedback->fetchAsPlainText());
-            return -1;
+            $progress->advance();
         }
 
         return 0;
     }
 
-    private function convertUserNamesToIds(array $names): array
+    private function getUpdatedList(array $list, array $grant, array $refuse): array
     {
-        static $allUserNames;
-        if ($allUserNames === null) {
-            foreach ($this->userDao->listAllUsers(null, null, null, null, 'user_Id', 'asc', null)['users'] as $user) {
-                $allUserNames[ $user['user_id'] ] = $user['user_name'];
+        $updated = array_merge($list, $grant);
+        $updated = array_diff($updated, $refuse);
+        return array_unique($updated);
+    }
+
+    private function convertUGroupNamesToIds(int $projectId, array $names): array
+    {
+        static $projectsUgroups = [];
+        if (empty($projectsUgroups[$projectId])) {
+            $projectsUgroups[$projectId] = [];
+            foreach ($this->ugroupDao->searchByGroupId($projectId)->getResult() as $ugroup) {
+                $projectsUgroups[$projectId][ $ugroup['ugroup_id'] ] = $ugroup['name'];
             }
         }
 
         $ids = [];
         foreach ($names as $name) {
-            $id = array_search($name, $allUserNames);
-            if (!$id) {
-                throw new Exception('Failed to find user "%s"', $name);
-            }
-
-            $ids[] = $id;
+            $ids[] = array_search($name, $projectsUgroups[$projectId]);
         }
 
-        return $ids;
+        return array_filter($ids);
     }
 }
