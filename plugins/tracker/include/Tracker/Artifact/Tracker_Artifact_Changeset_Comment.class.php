@@ -57,6 +57,7 @@ class Tracker_Artifact_Changeset_Comment
     public $body;
     public $bodyFormat;
     public $parent_id;
+    public $private;
 
     /**
      * @var array of purifier levels to be used when the comment is displayed in text/plain context
@@ -86,6 +87,7 @@ class Tracker_Artifact_Changeset_Comment
      * @param string                     $body               The comment (aka follow-up comment)
      * @param string                     $bodyFormat         The comment type (text or html follow-up comment)
      * @param int                        $parent_id          The id of the parent (if comment has been modified)
+     * @param bool                       $private            This flag indicates the privacy of the comment
      */
     public function __construct(
         $id,
@@ -96,7 +98,8 @@ class Tracker_Artifact_Changeset_Comment
         $submitted_on,
         $body,
         $bodyFormat,
-        $parent_id
+        $parent_id,
+        bool $private = false
     ) {
         $this->id                 = $id;
         $this->changeset          = $changeset;
@@ -107,6 +110,7 @@ class Tracker_Artifact_Changeset_Comment
         $this->body               = $body;
         $this->bodyFormat         = $bodyFormat;
         $this->parent_id          = $parent_id;
+        $this->private            = $private;
     }
 
     /**
@@ -174,8 +178,13 @@ class Tracker_Artifact_Changeset_Comment
             $html        .= '<input type="hidden"
                 id="tracker_artifact_followup_comment_body_format_' . $this->changeset->getId() . '"
                 name="tracker_artifact_followup_comment_body_format_' . $this->changeset->getId() . '"
-                value="' . $considered_body_format . '" />';
-            $html        .= '<div class="tracker_artifact_followup_comment_body">';
+                value="' . $this->private . '" />';
+            $html        .= '<input type="hidden"
+                id="tracker_artifact_followup_comment_private_' . $this->changeset->getId() . '"
+                name="tracker_artifact_followup_comment_private_' . $this->changeset->getId() . '"
+                value="' . $this->private . '" />';
+            $private_modifier_css = ($this->private) ? ' comment__private' : '';
+            $html        .= '<div class="tracker_artifact_followup_comment_body' . $private_modifier_css . '">';
             if ($this->parent_id && ! trim($this->body)) {
                 $html .= '<em>' . dgettext('tuleap-tracker', 'Comment has been cleared') . '</em>';
             } elseif ($this->bodyFormat === self::MARKDOWN_COMMENT) {

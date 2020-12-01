@@ -3342,3 +3342,31 @@ td.tracker-unsubscriber-actions {
 .hide-only-formatted-diff-message {
     display: none;
 }
+
+.rte_header {
+    display: flex;
+    justify-content: space-between;
+}
+
+.rte_private {
+    input.checkbox {
+        margin: 0;
+    }
+}
+
+.label__private {
+    position: relative;
+    bottom: 2px;
+    text-transform: uppercase;
+    background: #d22;
+    color: #fff;
+    font-weight: bold;
+    padding: 0px 2px 0px 2px;
+    font-size: 60%;
+    margin-right: 2px;
+    border-radius: 2px;
+}
+
+.comment__private {
+    background-color: #dcede4;
+}

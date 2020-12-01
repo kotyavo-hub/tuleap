@@ -729,8 +729,15 @@ class Tracker_Artifact implements Recent_Element_Interface, Tracker_Dispatchable
             case 'update-comment':
                 if ((int) $request->get('changeset_id') && $request->exist('content')) {
                     if ($changeset = $this->getChangeset($request->get('changeset_id'))) {
+                        $private = $changeset->getComment()->private;
                         $comment_format = $this->validateCommentFormat($request, 'comment_format');
-                        $changeset->updateComment($request->get('content'), $current_user, $comment_format, $_SERVER['REQUEST_TIME']);
+                        $changeset->updateComment(
+                            $request->get('content'),
+                            $current_user,
+                            $comment_format,
+                            $_SERVER['REQUEST_TIME'],
+                            $private
+                        );
                         if ($request->isAjax()) {
                             //We assume that we can only change a comment from a followUp
                             echo $changeset->getComment()->fetchFollowUp($current_user);
@@ -1117,15 +1124,22 @@ class Tracker_Artifact implements Recent_Element_Interface, Tracker_Dispatchable
      * @param array   $fields_data       Artifact fields values
      * @param string  $comment           The comment (follow-up) associated with the artifact update
      * @param PFUser  $submitter         The user who is doing the update
-     * @param bool $send_notification true if a notification must be sent, false otherwise
+     * @param bool    $send_notification true if a notification must be sent, false otherwise
      * @param string  $comment_format    The comment (follow-up) type ("text" | "html")
+     * @param bool     $private           The comment (follow-up) private type
      *
      * @throws Tracker_Exception In the validation
      * @throws Tracker_NoChangeException In the validation
      * @return Tracker_Artifact_Changeset|null
      */
-    public function createNewChangeset($fields_data, $comment, PFUser $submitter, $send_notification = true, $comment_format = Tracker_Artifact_Changeset_Comment::TEXT_COMMENT)
-    {
+    public function createNewChangeset(
+        $fields_data,
+        $comment,
+        PFUser $submitter,
+        $send_notification = true,
+        $comment_format = Tracker_Artifact_Changeset_Comment::TEXT_COMMENT,
+        bool $private = false
+    ) {
         $submitted_on = $_SERVER['REQUEST_TIME'];
         $validator    = new Tracker_Artifact_Changeset_NewChangesetFieldsValidator(
             $this->getFormElementFactory(),
@@ -1143,7 +1157,8 @@ class Tracker_Artifact implements Recent_Element_Interface, Tracker_Dispatchable
             (bool) $send_notification,
             (string) $comment_format,
             new \Tuleap\Tracker\FormElement\Field\File\CreatedFileURLMapping(),
-            new TrackerNoXMLImportLoggedConfig()
+            new TrackerNoXMLImportLoggedConfig(),
+            (bool) $private
         );
     }
 

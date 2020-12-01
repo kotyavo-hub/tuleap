@@ -185,6 +185,13 @@ document.observe("dom:loaded", function () {
         return { value: content, htmlFormat: htmlFormat };
     }
 
+    function getPrivateFormat(id) {
+        if ($("tracker_artifact_followup_comment_private_" + id).value) {
+            return true;
+        }
+        return false;
+    }
+
     $$(".tracker_artifact_followup_comment_controls_edit button").each(function (edit) {
         var id = edit.up(".tracker_artifact_followup").id;
         var data;
@@ -200,6 +207,7 @@ document.observe("dom:loaded", function () {
                         class: "user-mention",
                     });
                     var htmlFormat = false;
+                    var privateFormat = false;
 
                     if (comment_panel.empty()) {
                         textarea.value = "";
@@ -207,6 +215,7 @@ document.observe("dom:loaded", function () {
                         data = getTextAreaValueAndHtmlFormat(comment_panel, id);
                         textarea.value = data.value;
                         htmlFormat = data.htmlFormat;
+                        privateFormat = getPrivateFormat(id);
                     }
 
                     var rteSpan = new Element("span", { style: "text-align: left;" }).update(
@@ -217,6 +226,7 @@ document.observe("dom:loaded", function () {
                     );
                     comment_panel.insert({ before: edit_panel });
                     var name = "comment_format" + id;
+                    // eslint-disable-next-line no-new
                     new tuleap.textarea.RTE(textarea, {
                         toggle: true,
                         default_in_html: false,
@@ -224,6 +234,7 @@ document.observe("dom:loaded", function () {
                         name: name,
                         htmlFormat: htmlFormat,
                         full_width: true,
+                        privateFormat: privateFormat,
                     });
 
                     var nb_rows_displayed = 5;
