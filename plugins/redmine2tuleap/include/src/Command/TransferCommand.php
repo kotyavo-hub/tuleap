@@ -71,7 +71,7 @@ class TransferCommand extends GenericTransferCommand
                     $includedSubtransfers[] = sprintf('redmine2tuleap:%s:transfer', $includedSubtransferItem);
                     unset($includedSubtransfers[$idx]);
                 }
-            } elseif ($includedSubtransfer === '*') {
+            } elseif ($includedSubtransfer === 'all') {
                 $includedSubtransfers = $this->subTransfers;
                 break;
             }
@@ -86,12 +86,16 @@ class TransferCommand extends GenericTransferCommand
 
         $sqlImportQueue = [];
         foreach ($imports as $importDefinition) {
-            if (strpos($importDefinition, ':') === false) {
-                $output->error('Значение для --sql должно содержать два значение через ":": 1) Имя базы данных; 2) Путь к SQL-файлу');
-                return -1;
-            }
+            //if (strpos($importDefinition, ':') === false) {
+            //    $output->error('Значение для --sql должно содержать два значение через ":": 1) Имя базы данных; 2) Путь к SQL-файлу');
+            //    return -1;
+            //}
 
             [$databaseName, $sqlFile] = explode(':', $importDefinition, 2);
+
+            if (empty($sqlFile)) {
+                $sqlFile = "{$databaseName}.sql";
+            }
 
             $sqlFilePath = realpath($this->contentDirectory . DIRECTORY_SEPARATOR . $sqlFile);
             if (!$sqlFilePath) {
@@ -114,9 +118,9 @@ class TransferCommand extends GenericTransferCommand
                     file_get_contents($importItem['file'])
                 );
 
-                if ($importItem['database'] === DatabaseEnum::TULEAP) {
-                    $this->refRepo->clear();
-                }
+                // if ($importItem['database'] === DatabaseEnum::TULEAP) {
+                //     $this->refRepo->clear();
+                // }
             } catch (Exception $e) {
                 $output->error($e->getMessage());
                 return -1;

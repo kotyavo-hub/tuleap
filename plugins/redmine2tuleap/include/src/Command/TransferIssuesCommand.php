@@ -5,6 +5,7 @@ namespace Maximaster\Redmine2TuleapPlugin\Command;
 use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\FieldListBindUserColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineAttachmentColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldFormatEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineCustomFieldTypeEnum;
@@ -13,10 +14,12 @@ use Maximaster\Redmine2TuleapPlugin\Enum\RedmineEnumerationTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineIssueColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineIssueStatusColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\TuleapProjectColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTableEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapTrackerFieldColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapUserColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\TuleapUserStatusEnum;
+use Maximaster\Redmine2TuleapPlugin\Exception\AttachmentFileNotFoundException;
 use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapTrackerFieldListBindUsersBackupRepository;
@@ -25,29 +28,37 @@ use Maximaster\Redmine2TuleapPlugin\Repository\RedmineEnumerationRepository;
 use Maximaster\Redmine2TuleapPlugin\Repository\RedmineIssueStatusRepository;
 use ParagonIE\EasyDB\EasyDB;
 use ParagonIE\EasyDB\EasyStatement;
+use Project;
+use ReflectionMethod;
+use RuntimeException;
+use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Tracker;
 use Tracker_Artifact;
 use Tracker_Artifact_ChangesetValue_Text;
+use Tracker_Artifact_XMLImport_XMLImportFieldStrategyAttachment;
+use Tracker_ArtifactCreator;
+use Tracker_ArtifactDao;
 use Tracker_ArtifactFactory;
 use Tracker_FormElement_Field;
 use Tracker_FormElement_Field_List;
 use Tracker_FormElement_Field_List_Bind_Users;
-use Tracker_FormElement_Field_MultiSelectbox;
-use Tracker_FormElement_Field_Selectbox;
 use Tracker_FormElement_FieldDao;
 use Tracker_FormElementFactory;
 use Tracker_Workflow_WorkflowUser;
 use TrackerFactory;
 use Netcarver\Textile;
 use Tuleap\Project\UserPermissionsDao;
+use Tuleap\Tracker\Artifact\XMLImport\TrackerNoXMLImportLoggedConfig;
+use Tuleap\Tracker\FormElement\Field\File\CreatedFileURLMapping;
 use UserManager;
 
 class TransferIssuesCommand extends GenericTransferCommand
 {
     const OPTION_LIMIT = 'limit';
+
+    const ATTACHMENTS_FIELD = 'attachments';
 
     /** @var Tracker_ArtifactFactory */
     private $trackerArtifactFactory;
@@ -80,11 +91,11 @@ class TransferIssuesCommand extends GenericTransferCommand
     /** @var UserPermissionsDao */
     private $userPermDao;
 
-    /** @var array */
-    private $projectMembers = [];
-
     /** @var UserManager */
     private $userManager;
+
+    /** @var Tracker_ArtifactCreator */
+    private $artifactCreator;
 
     public static function getDefaultName()
     {
@@ -96,6 +107,23 @@ class TransferIssuesCommand extends GenericTransferCommand
         return EntityTypeEnum::ISSUE();
     }
 
+    /**
+     * TransferIssuesCommand constructor.
+     * @param string $pluginDirectory
+     * @param EasyDB $redmineDb
+     * @param EasyDB $tuleapDb
+     * @param PluginRedmine2TuleapReferenceRepository $refRepo
+     * @param Tracker_ArtifactFactory $trackerArtifactFactory
+     * @param TrackerFactory $trackerFactory
+     * @param RedmineCustomFieldRepository $cfRepo
+     * @param Tracker_FormElementFactory $formElementFactory
+     * @param RedmineIssueStatusRepository $issueStatusRepo
+     * @param RedmineEnumerationRepository $redmineEnumRepo
+     * @param Textile\Parser $textileParser
+     * @param PluginRedmine2TuleapTrackerFieldListBindUsersBackupRepository $temporaryRebindedUserFieldsRepo
+     * @param UserPermissionsDao $userPermDao
+     * @param UserManager $userManager
+     */
     public function __construct(
         string $pluginDirectory,
         EasyDB $redmineDb,
@@ -113,6 +141,7 @@ class TransferIssuesCommand extends GenericTransferCommand
         UserManager $userManager
     ) {
         parent::__construct($pluginDirectory, $redmineDb, $tuleapDb, $refRepo);
+
         $this->trackerArtifactFactory = $trackerArtifactFactory;
         $this->trackerFactory = $trackerFactory;
         $this->cfRepo = $cfRepo;
@@ -123,6 +152,8 @@ class TransferIssuesCommand extends GenericTransferCommand
         $this->temporaryRebindedUserFieldsRepo = $temporaryRebindedUserFieldsRepo;
         $this->userPermDao = $userPermDao;
         $this->userManager = $userManager;
+
+        $this->artifactCreator = $this->createArtifactCreator($this->trackerArtifactFactory);
     }
 
     protected function configure()
@@ -144,8 +175,8 @@ class TransferIssuesCommand extends GenericTransferCommand
             return -1;
         }
 
-        $importedProjectIds = $this->refRepo->redmineIdsOfType(EntityTypeEnum::PROJECT());
-        if (empty($importedProjectIds)) {
+        $transferedProjectIds = $this->refRepo->redmineIdsOfType(EntityTypeEnum::PROJECT());
+        if (empty($transferedProjectIds)) {
             $output->warning('Transfer some projects first');
             return 0;
         }
@@ -191,9 +222,12 @@ class TransferIssuesCommand extends GenericTransferCommand
             $condition->andIn(RedmineIssueColumnEnum::ID . ' not in (?*)', $transferedIssueIds);
         }
 
-        $condition->andIn(RedmineIssueColumnEnum::PROJECT_ID . ' in (?*)', $importedProjectIds);
+        $condition->andIn(RedmineIssueColumnEnum::PROJECT_ID . ' in (?*)', $transferedProjectIds);
 
-        $issuesQuery .= ' WHERE ' . $condition->sql();
+        $issuesQuery .= '
+            WHERE ' . $condition->sql() . '
+            ORDER BY ' . RedmineIssueColumnEnum::ID . ' ASC
+        ';
 
         if ($limit = $input->getOption(self::OPTION_LIMIT)) {
             $issuesQuery .= ' LIMIT ' . $limit;
@@ -206,7 +240,7 @@ class TransferIssuesCommand extends GenericTransferCommand
             return 0;
         }
 
-        $output->section(sprintf('Transfering %d issues of %d projects', count($redmineIssues), count($importedProjectIds)));
+        $output->section(sprintf('Transfering %d issues of %d projects', count($redmineIssues), count($transferedProjectIds)));
 
         $redmineIssueIds = array_column($redmineIssues, RedmineIssueColumnEnum::ID);
         $redmineIssues = array_combine($redmineIssueIds, $redmineIssues);
@@ -250,63 +284,145 @@ class TransferIssuesCommand extends GenericTransferCommand
             unset($issue);
         }
 
-        $this->allowUserBindedFieldsHaveAnyUser();
+        $this->loadAttachments($redmineIssues);
 
-        $redmineAdminUser = UserManager::instance()->getUserById($redmineAdminUserId);
-        UserManager::instance()->setCurrentUser($redmineAdminUser);
+        try {
+            $this->allowUserBindedFieldsHaveAnyUser();
 
-        $issueToArtifact = [];
-        $projectType = EntityTypeEnum::PROJECT();
+            $redmineAdminUser = UserManager::instance()->getUserById($redmineAdminUserId);
+            UserManager::instance()->setCurrentUser($redmineAdminUser);
 
-        $progress = $output->createProgressBar(count($redmineIssues));
+            $issueToArtifact = [];
+            $progress = $output->createProgressBar(count($redmineIssues));
+            $this->transferIssues($progress, $issueToArtifact, $redmineIssues);
+        } catch (Exception $e) {
+            $output->error($e->getMessage());
+            return -1;
+        } finally {
+            $this->revertUserBindedFieldsValueFunctions();
+        }
 
+        // deprecated
+        // $this->transferParentIds($output, $redmineIssues, $issueToArtifact);
+        return 0;
+    }
+
+    private function transferIssues(ProgressBar $progress, array &$issueToArtifact, array $redmineIssues): void
+    {
         foreach ($redmineIssues as $issueId => $redmineIssue) {
-            $redmineProjectId = $redmineIssue[RedmineIssueColumnEnum::PROJECT_ID];
-            $tuleapProjectId = $this->refRepo->findTuleapId($projectType, (string) $redmineProjectId);
-
-            $tracker = $this->trackerFactory->getTrackerByShortnameAndProjectId(TransferProjectsCommand::TRACKER_ITEM_NAME, $tuleapProjectId);
-
-            $issueAuthor = $this->userManager->getUserById($this->refRepo->getTuleapUserId($redmineIssue[RedmineIssueColumnEnum::AUTHOR_ID], true));
-
-            // to bypass permission checks
-            $issueAuthor = new Tracker_Workflow_WorkflowUser([
-                TuleapUserColumnEnum::USER_ID => $issueAuthor->getId(),
-                TuleapUserColumnEnum::USER_NAME => $issueAuthor->getUserName(),
-                TuleapUserColumnEnum::STATUS => TuleapUserStatusEnum::ACTIVE,
-            ]);
-
-            $tuleapArtifact = $this->buildArtifactFields($tracker->id, $redmineIssue);
-
-            $this->enableDirtyHackForSubmittedOn(strtotime($redmineIssue[RedmineIssueColumnEnum::CREATED_ON]));
-
-            // $this->syncProjectMembers($tracker, $tuleapArtifact);
-
-            $artifact = $this->trackerArtifactFactory->createArtifact(
-                $tracker,
-                $tuleapArtifact,
-                $issueAuthor,
-                null,
-                false,
-                false
-            );
-
-            $this->disableDirtyHackForSubmittedOn();
-
-            if (!$artifact || !$artifact->id) {
-                $output->error(sprintf('Failed to create artifact for issue #%d', $redmineIssue[RedmineIssueColumnEnum::ID]));
-                return -1;
+            // could be alredy created by recursive calls
+            if (!empty($issueToArtifact[$issueId])) {
+                continue;
             }
 
+            // we should create all parents in the first place
+            $parentIssueId = $redmineIssue[RedmineIssueColumnEnum::PARENT_ID];
+            if ($parentIssueId && !$this->refRepo->getArtifactId($parentIssueId)) {
+                if (empty($redmineIssues[$parentIssueId])) {
+                    throw new Exception(
+                        sprintf(
+                            "Issue #%d has #%d as parent, but we don't import it right now for some reason, so we can't proceed",
+                            $issueId,
+                            $parentIssueId
+                        )
+                    );
+                }
+
+                $this->transferIssues($progress, $issueToArtifact, [
+                    $parentIssueId => $redmineIssues[$parentIssueId],
+                ]);
+            }
+
+            $artifact = $this->createArtifact($redmineIssue);
             $this->markAsTransfered($issueId, $artifact->id);
             $issueToArtifact[$issueId] = $artifact;
 
             $progress->advance();
         }
+    }
 
-        $this->revertUserBindedFieldsValueFunctions();
+    private function createArtifact($redmineIssue): Tracker_Artifact
+    {
+        $projectType = EntityTypeEnum::PROJECT();
 
-        $this->transferParentIds($output, $tracker->id, $redmineIssues, $issueToArtifact);
-        return 0;
+        $issueId = $redmineIssue[RedmineIssueColumnEnum::ID];
+
+        $redmineProjectId = $redmineIssue[RedmineIssueColumnEnum::PROJECT_ID];
+        $tuleapProjectId = $this->refRepo->findTuleapId($projectType, (string) $redmineProjectId);
+
+        $tracker = $this->trackerFactory->getTrackerByShortnameAndProjectId(TransferProjectsCommand::TRACKER_ITEM_NAME, $tuleapProjectId);
+
+        $issueAuthor = $this->userManager->getUserById($this->refRepo->getTuleapUserId($redmineIssue[RedmineIssueColumnEnum::AUTHOR_ID], true));
+
+        // to bypass permission checks
+        $issueAuthor = new Tracker_Workflow_WorkflowUser([
+            TuleapUserColumnEnum::USER_ID => $issueAuthor->getId(),
+            TuleapUserColumnEnum::USER_NAME => $issueAuthor->getUserName(),
+            TuleapUserColumnEnum::STATUS => TuleapUserStatusEnum::ACTIVE,
+        ]);
+
+        $tuleapArtifact = $this->buildArtifactFields($tracker->id, $redmineIssue);
+
+        $submittedOnTimestamp = strtotime($redmineIssue[RedmineIssueColumnEnum::CREATED_ON]);
+
+        $artifact = null;
+
+        try {
+            // we have to bypass "project should be active" rule is such a way. See ArtifactLinkValidator::isValid
+            $artifactProject = $tracker->getProject();
+            $projectStatus = $artifactProject->data_array[TuleapProjectColumnEnum::STATUS];
+            $artifactProject->data_array[TuleapProjectColumnEnum::STATUS] = Project::STATUS_ACTIVE;
+
+            if ($this->config()->createArtifactIdFromIssueId()) {
+                $artifact = $this->artifactCreator->createBareWithAllData(
+                    $tracker,
+                    $issueId,
+                    $submittedOnTimestamp,
+                    $issueAuthor
+                );
+
+                if (!$artifact) {
+                    throw new RuntimeException(sprintf('Failed to create artifact for issue #%d', $issueId));
+                }
+
+                $changeset = $this->artifactCreator->createFirstChangeset(
+                    $artifact,
+                    $tuleapArtifact,
+                    $issueAuthor,
+                    $submittedOnTimestamp,
+                    false,
+                    new CreatedFileURLMapping(),
+                    new TrackerNoXMLImportLoggedConfig()
+                );
+
+                if (!$changeset) {
+                    throw new RuntimeException(sprintf('Failed to create artifact changeset for issue #%d', $issueId));
+                }
+            } else {
+                try {
+                    $this->enableDirtyHackForSubmittedOn($submittedOnTimestamp);
+
+                    $artifact = $this->trackerArtifactFactory->createArtifact(
+                        $tracker,
+                        $tuleapArtifact,
+                        $issueAuthor,
+                        null,
+                        false,
+                        false
+                    );
+                } finally {
+                    $this->disableDirtyHackForSubmittedOn();
+                }
+            }
+        } finally {
+            $artifactProject->data_array[TuleapProjectColumnEnum::STATUS] = $projectStatus;
+        }
+
+        if (!$artifact || !$artifact->id) {
+            throw new Exception(sprintf('Failed to create artifact for issue #%d', $redmineIssue[RedmineIssueColumnEnum::ID]));
+        }
+
+        return $artifact;
     }
 
     private function buildArtifactFields(int $trackerId, array $redmineIssue): array
@@ -315,19 +431,25 @@ class TransferIssuesCommand extends GenericTransferCommand
 
         $redmineColumnNames = array_map('strval', RedmineIssueColumnEnum::values());
 
+        static $ignoredFields;
+        if ($ignoredFields === null) {
+            $ignoredFields = [
+                RedmineIssueColumnEnum::ID,             // markAsTransfered()
+                RedmineIssueColumnEnum::PROJECT_ID,     // $trackerId
+                RedmineIssueColumnEnum::AUTHOR_ID,      // createArtifact() $user argument
+                RedmineIssueColumnEnum::CREATED_ON,     // ... same
+            ];
+
+            // if (!$createArtifactIdFromIssueId) {
+            //     $ignoredFields[] = RedmineIssueColumnEnum::PARENT_ID; // transferParentIds()
+            // }
+        }
+
         $tuleapArtifact = [];
 
         foreach ($redmineIssue as $issueField => $issueValue) {
             // Some fields transfer in other ways
-            if (
-                in_array($issueField, [
-                    RedmineIssueColumnEnum::ID,             // markAsTransfered()
-                    RedmineIssueColumnEnum::PROJECT_ID,     // $trackerId
-                    RedmineIssueColumnEnum::AUTHOR_ID,      // createArtifact() $user argument
-                    RedmineIssueColumnEnum::CREATED_ON,     // ... same
-                    RedmineIssueColumnEnum::PARENT_ID,      // transferParentIds()
-                ])
-            ) {
+            if (in_array($issueField, $ignoredFields)) {
                 continue;
             }
 
@@ -405,6 +527,12 @@ class TransferIssuesCommand extends GenericTransferCommand
             case RedmineIssueColumnEnum::CREATED_ON:
             case RedmineIssueColumnEnum::UPDATED_ON:
                 return $this->convertDate($value);
+
+            case RedmineIssueColumnEnum::PARENT_ID:
+                return ['new_values' => $this->refRepo->getArtifactId($value)];
+
+            case self::ATTACHMENTS_FIELD:
+                return $this->convertAttachments($value);
         }
 
         // at this point we converted all default fields, so there we return value as it is
@@ -458,11 +586,10 @@ class TransferIssuesCommand extends GenericTransferCommand
 
     /**
      * @param SymfonyStyle $output
-     * @param int $trackerId
      * @param array $redmineIssues
      * @param Tracker_Artifact[] $issueToArtifact
      */
-    private function transferParentIds(SymfonyStyle $output, int $trackerId, array $redmineIssues, array $issueToArtifact): void
+    private function transferParentIds(SymfonyStyle $output, array $redmineIssues, array $issueToArtifact): void
     {
         $output->section('Transfering parent_id');
 
@@ -481,12 +608,21 @@ class TransferIssuesCommand extends GenericTransferCommand
             $artifact = $issueToArtifact[$issueId];
             $fieldId = $this->getTrackerFieldIdByLabel($artifact->getTrackerId(), RedmineIssueColumnEnum::PARENT_ID);
 
-            $changeset = $artifact->createNewChangeset(
-                [$fieldId => ['new_values' => $tuleapParentId]],
-                '',
-                $artifact->getSubmittedByUser(),
-                false
-            );
+            // we have to bypass "project should be active" rule is such a way. See ArtifactLinkValidator::isValid
+            $artifactProject = $artifact->getTracker()->getProject();
+            $projectStatus = $artifactProject->data_array[TuleapProjectColumnEnum::STATUS];
+            $artifactProject->data_array[TuleapProjectColumnEnum::STATUS] = Project::STATUS_ACTIVE;
+
+            try {
+                $changeset = $artifact->createNewChangeset(
+                    [$fieldId => ['new_values' => $tuleapParentId]],
+                    '',
+                    $artifact->getSubmittedByUser(),
+                    false
+                );
+            } finally {
+                $artifactProject->data_array[TuleapProjectColumnEnum::STATUS] = $projectStatus;
+            }
 
             if (!$changeset || !$changeset->id) {
                 throw new Exception(sprintf('Failed to create changeset to set parent_id for issue #%d', $issueId));
@@ -558,47 +694,6 @@ class TransferIssuesCommand extends GenericTransferCommand
         }
     }
 
-    /**
-     * Add all related users as project members to make bind-fields work
-     * They can be removed afterwards
-     *
-     * @param Tracker $tracker
-     *
-     * @param array $artifact
-     */
-    private function syncProjectMembers(Tracker $tracker, array $artifact): void
-    {
-        $projectId = $tracker->getGroupId();
-
-        if (empty($this->projectMembers[$projectId])) {
-            $this->projectMembers[$projectId] = [];
-        }
-
-        $artifactUsers = [];
-        foreach ($tracker->getFormElementFields() as $formField) {
-            if (
-                ($formField instanceof Tracker_FormElement_Field_Selectbox
-                    || $formField instanceof Tracker_FormElement_Field_MultiSelectbox
-                ) && $formField->getBind()->getType() === Tracker_FormElement_Field_List_Bind_Users::TYPE
-                && !empty($artifact[$formField->getId()])
-            ) {
-                $artifactUsers[] = $artifact[$formField->getId()];
-            }
-        }
-
-        $artifactUsers = array_filter(array_unique($artifactUsers));
-        if (!$artifactUsers) {
-            return;
-        }
-
-        foreach (array_diff($artifactUsers, $this->projectMembers[$projectId]) as $newProjectMemberId) {
-            if (!$this->userPermDao->isUserPartOfProjectMembers($projectId, $newProjectMemberId)) {
-                $this->userPermDao->addUserAsProjectMember($projectId, $newProjectMemberId);
-                $this->projectMembers[$projectId][] = $newProjectMemberId;
-            }
-        }
-    }
-
     private function convertDate(string $date): string
     {
         if ($date === '0000-00-00') {
@@ -611,5 +706,109 @@ class TransferIssuesCommand extends GenericTransferCommand
     private function getTrackerFieldIdByLabel(int $trackerId, string $label): int
     {
         return $this->prepareFieldsByLabel($trackerId)[$label][TuleapTrackerFieldColumnEnum::ID];
+    }
+
+    private function loadAttachments(array &$redmineIssues): void
+    {
+        if (!$redmineIssues) {
+            return;
+        }
+
+        $redmineDb = $this->redmine();
+
+        $attachmentQueryCondition = EasyStatement::open()
+            ->with(RedmineAttachmentColumnEnum::CONTAINER_TYPE . ' = ?', 'Issue')
+            ->andWith(RedmineAttachmentColumnEnum::DISK_FILENAME . ' != ""')
+            ->andIn(RedmineAttachmentColumnEnum::CONTAINER_ID . ' in (?*)', array_column($redmineIssues, RedmineIssueColumnEnum::ID));
+
+        $redmineAttachments = $redmineDb->run(
+            '
+                SELECT ' . implode(', ' , [
+                    RedmineAttachmentColumnEnum::ID,
+                    RedmineAttachmentColumnEnum::CONTAINER_ID,
+                    RedmineAttachmentColumnEnum::CONTENT_TYPE,
+                    RedmineAttachmentColumnEnum::FILENAME,
+                    RedmineAttachmentColumnEnum::FILESIZE,
+                    RedmineAttachmentColumnEnum::DISK_FILENAME,
+                    RedmineAttachmentColumnEnum::DISK_DIRECTORY,
+                    RedmineAttachmentColumnEnum::DESCRIPTION,
+                ]) . '
+                FROM ' . RedmineTableEnum::ATTACHMENTS . '
+                WHERE ' . $attachmentQueryCondition->sql() . '
+            ',
+            ...$attachmentQueryCondition->values()
+        );
+
+        foreach ($redmineAttachments as $redmineAttachment) {
+            $issueId = $redmineAttachment[RedmineAttachmentColumnEnum::CONTAINER_ID];
+            if (empty($redmineIssues[$issueId])) {
+                continue;
+            }
+
+            $issue =& $redmineIssues[$issueId];
+
+            if (empty($issue[self::ATTACHMENTS_FIELD])) {
+                $issue[self::ATTACHMENTS_FIELD] = [];
+            }
+
+            $issue[self::ATTACHMENTS_FIELD][] = $redmineAttachment;
+
+            unset($issue);
+        }
+    }
+
+    private function convertAttachments(array $redmineAttachments): array
+    {
+        $attachments = [];
+        foreach ($redmineAttachments as $redmineAttachment) {
+            try {
+                $attachments[] = $this->convertAttachment($redmineAttachment);
+            } catch (AttachmentFileNotFoundException $e) {
+                // it's possible to have broken files on redmine instance, so just ignore such files
+                continue;
+            }
+        }
+
+        return $attachments;
+    }
+
+    private function convertAttachment(array $redmineAttachment): array
+    {
+        static $redmineFilesDirectory;
+        if ($redmineFilesDirectory === null) {
+            $redmineFilesDirectory = implode(DIRECTORY_SEPARATOR, [
+                $this->config()->redmineDirectory(),
+                'files'
+            ]);
+        }
+
+        $filePath = implode(DIRECTORY_SEPARATOR, [
+            $redmineFilesDirectory,
+            $redmineAttachment[RedmineAttachmentColumnEnum::DISK_DIRECTORY],
+            $redmineAttachment[RedmineAttachmentColumnEnum::DISK_FILENAME],
+        ]);
+
+        if (!file_exists($filePath)) {
+            throw new AttachmentFileNotFoundException(sprintf('File not found: %s', $filePath));
+        }
+
+        return [
+            // special mark to copy files instead of their moving
+            Tracker_Artifact_XMLImport_XMLImportFieldStrategyAttachment::FILE_INFO_COPY_OPTION => 1,
+
+            'name' => $redmineAttachment[RedmineAttachmentColumnEnum::FILENAME],
+            'description' => $redmineAttachment[RedmineAttachmentColumnEnum::DESCRIPTION] ?: '',
+            'type' => $redmineAttachment[RedmineAttachmentColumnEnum::CONTENT_TYPE] ?: mime_content_type($filePath),
+            'tmp_name' => $filePath,
+            'size' => $redmineAttachment[RedmineAttachmentColumnEnum::FILESIZE],
+            'error' => 0,
+        ];
+    }
+
+    private function createArtifactCreator(Tracker_ArtifactFactory $trackerArtifactFactory): Tracker_ArtifactCreator
+    {
+        $factoryMethod = (new ReflectionMethod($trackerArtifactFactory, 'getArtifactCreator'));
+        $factoryMethod->setAccessible(true);
+        return $factoryMethod->invoke($trackerArtifactFactory);
     }
 }

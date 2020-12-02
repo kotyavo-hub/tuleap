@@ -18,6 +18,7 @@
  * along with Tuleap. If not, see <http://www.gnu.org/licenses/>.
  */
 
+use Tuleap\CLI\CLICommandsCollector;
 use Tuleap\Layout\IncludeAssets;
 use Tuleap\Plugin\PluginWithLegacyInternalRouting;
 use Tuleap\Timetracking\Admin\AdminController;
@@ -27,6 +28,7 @@ use Tuleap\Timetracking\Admin\TimetrackingUgroupDao;
 use Tuleap\Timetracking\Admin\TimetrackingUgroupRetriever;
 use Tuleap\Timetracking\Admin\TimetrackingUgroupSaver;
 use Tuleap\Timetracking\ArtifactView\ArtifactViewBuilder;
+use Tuleap\Timetracking\Command\UpdateTimetrackingPermissionsCommand;
 use Tuleap\Timetracking\Permissions\PermissionsRetriever;
 use Tuleap\Timetracking\Plugin\TimetrackingPluginInfo;
 use Tuleap\Timetracking\REST\ResourcesInjector;
@@ -70,6 +72,7 @@ class timetrackingPlugin extends PluginWithLegacyInternalRouting // @codingStand
         $this->addHook(GetTrackersWithCriteria::NAME);
         $this->addHook('fill_project_history_sub_events');
         $this->addHook(Event::REST_RESOURCES);
+        $this->addHook(CLICommandsCollector::NAME);
 
         $this->listenToCollectRouteEventWithDefaultController();
 
@@ -149,7 +152,7 @@ class timetrackingPlugin extends PluginWithLegacyInternalRouting // @codingStand
     /**
      * @return AdminController
      */
-    private function getAdminController()
+    public function getAdminController()
     {
         return new AdminController(
             new TrackerManager(),
@@ -339,5 +342,18 @@ class timetrackingPlugin extends PluginWithLegacyInternalRouting // @codingStand
     {
         $injector = new ResourcesInjector();
         $injector->populate($params['restler']);
+    }
+
+    public function collectCLICommands(CLICommandsCollector $commandCollector)
+    {
+        $commandCollector->addCommand(UpdateTimetrackingPermissionsCommand::getDefaultName(), function () {
+            return new UpdateTimetrackingPermissionsCommand(
+                ProjectManager::instance(),
+                TrackerFactory::instance(),
+                new TimetrackingUgroupDao(),
+                new ProjectDao(),
+                new UGroupDao()
+            );
+        });
     }
 }

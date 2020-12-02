@@ -1,5 +1,6 @@
 {
-    "redmineDirectory": "/some/path/to/redmine/directory",
+    "redmineDirectory": "/usr/share/tuleap/redmine",
     "defaultRedmineUserId": "1",
-    "language": "ru_RU"
+    "language": "ru_RU",
+    "createArtifactIdFromIssueId": false
 }

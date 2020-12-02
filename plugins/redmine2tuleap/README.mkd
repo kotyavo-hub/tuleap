@@ -6,17 +6,23 @@ Transfers data from Redmine database (v3.2.1) to Tuleap database (v12.0.99.175).
 
 ```bash
 cd ./plugins/redmine2tuleap
+
+# configure
+cp ./redmine2tuleap.json.dist ./redmine2tuleap.json
+"${EDITOR:-vi}" ./redmine2tuleap.json
+
+# dump both databases (redmine for data, tuleap for backup)
 make dump-dbs
+
+# transfer data
+make transfer of=all
 ```
 
 ## Transferable objects
 
 * Users
 * Projects
-  * Members
-  * Member groups
-  * Issues
-    * Comments
+  * Members with assigned project roles
+  * Issues with their comments
   * Time entries
-  * Wiki pages
-  * Attachments (issue, wiki page)
+

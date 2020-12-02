@@ -2,10 +2,12 @@
 
 namespace Maximaster\Redmine2TuleapPlugin\Command;
 
+use Exception;
 use Maximaster\Redmine2TuleapPlugin\Enum\EntityTypeEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineIssueColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTableEnum;
 use Maximaster\Redmine2TuleapPlugin\Enum\RedmineTimeEntryColumnEnum;
+use Maximaster\Redmine2TuleapPlugin\Enum\RedmineUserColumnEnum;
 use Maximaster\Redmine2TuleapPlugin\Framework\GenericTransferCommand;
 use Maximaster\Redmine2TuleapPlugin\Repository\PluginRedmine2TuleapReferenceRepository;
 use ParagonIE\EasyDB\EasyDB;
@@ -31,6 +33,11 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
     /** @var TrackerFactory */
     private $trackerFactory;
 
+    public static function getDefaultName()
+    {
+        return 'redmine2tuleap:time-entries:transfer';
+    }
+
     protected function entityType(): EntityTypeEnum
     {
         return EntityTypeEnum::TIME_ENTRY();
@@ -49,6 +56,8 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
         $this->timeDao = $timeDao;
         $this->artifactDao = $artifactDao;
         $this->trackerFactory = $trackerFactory;
+
+        $this->artifactDao->enableExceptionsOnError();
     }
 
     protected function transfer(InputInterface $input, SymfonyStyle $output): int
@@ -58,25 +67,35 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
         return 0;
     }
 
-    private function buildBaseTimeEntryQuery(): string
+    private function buildBaseTimeEntryQuery(bool $forIssues): string
     {
+        $selected = preg_replace('/^/', RedmineTableEnum::TIME_ENTRIES . '.', [
+            RedmineTimeEntryColumnEnum::ID,
+            RedmineTimeEntryColumnEnum::USER_ID,
+            RedmineTimeEntryColumnEnum::SPENT_ON,
+            RedmineTimeEntryColumnEnum::HOURS,
+            RedmineTimeEntryColumnEnum::COMMENTS,
+        ]);
+
+        $joins = '';
+        if ($forIssues) {
+            // it's possible that time_entries.project_id whould be wrong, so we fetching it from issues
+            $selected[] = RedmineTableEnum::ISSUES . '.' . RedmineIssueColumnEnum::PROJECT_ID;
+
+            $selected[] = RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::ISSUE_ID;
+
+            $joins = '
+                LEFT JOIN ' . RedmineTableEnum::ISSUES . ' ON
+                    ' . RedmineTableEnum::ISSUES . '.' . RedmineIssueColumnEnum::ID . ' = ' . RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::ISSUE_ID . '
+            ';
+        } else {
+            $selected[] = RedmineTimeEntryColumnEnum::PROJECT_ID;
+        }
+
         return '
-            SELECT ' . implode(', ', array_merge(
-                preg_replace('/^/', RedmineTableEnum::TIME_ENTRIES . '.', [
-                    RedmineTimeEntryColumnEnum::ID,
-                    RedmineTimeEntryColumnEnum::USER_ID,
-                    RedmineTimeEntryColumnEnum::SPENT_ON,
-                    RedmineTimeEntryColumnEnum::HOURS,
-                    RedmineTimeEntryColumnEnum::COMMENTS,
-                ]),
-                [
-                    // it's possible that time_entries.project_id whould be wrong, so we fetching it from issues
-                    RedmineTableEnum::ISSUES . '.' . RedmineIssueColumnEnum::PROJECT_ID
-                ]
-            )) . '
+            SELECT . ' . implode(', ', $selected) . '
             FROM ' . RedmineTableEnum::TIME_ENTRIES . '
-            LEFT JOIN ' . RedmineTableEnum::ISSUES . ' ON
-                ' . RedmineTableEnum::ISSUES . '.' . RedmineIssueColumnEnum::ID . ' = ' . RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::ISSUE_ID . '
+            ' . $joins . '
         ';
     }
 
@@ -96,8 +115,28 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
         }
     }
 
+    /**
+     * We have some reports of non-users in our instance for some reason
+     * It's probably was wrong import from previous tracker
+     *
+     * @param string $query
+     * @param EasyStatement $conditions
+     */
+    private function excludePseudoUsers(string &$query, EasyStatement $conditions)
+    {
+        $query .= '
+            LEFT JOIN ' . RedmineTableEnum::USERS . ' ON
+                ' . RedmineTableEnum::USERS . '.`' . RedmineUserColumnEnum::ID . '` = ' . RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::USER_ID . ' AND
+                ' . RedmineTableEnum::USERS . '.`' . RedmineUserColumnEnum::TYPE . '` = "User"
+        ';
+
+        $conditions->andWith(RedmineTableEnum::USERS . '.' . RedmineUserColumnEnum::ID . ' is not null');
+    }
+
     private function transferIssueLinkedTimeEntries(SymfonyStyle $output)
     {
+        $output->section('Transfering issue linked time entries');
+
         // transfer only those time entries which has their issues imported
         $transferedIssueIds = $this->refRepo->redmineIdsOfType(EntityTypeEnum::ISSUE());
         if (!$transferedIssueIds) {
@@ -111,8 +150,11 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
 
         $this->exludeAlreadyTransfered($conditions);
 
+        $query = $this->buildBaseTimeEntryQuery(true);
+        $this->excludePseudoUsers($query, $conditions);
+
         $timeEntries = $this->redmine()->run(
-            $this->buildBaseTimeEntryQuery() .
+            $query .
             ' WHERE ' . $conditions->sql(),
             ...$conditions->values()
         );
@@ -122,12 +164,18 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
 
     private function transferProjectLinkedTimeEntries(SymfonyStyle $output)
     {
+        $output->section('Transfering project linked time entries');
+
         $conditions = EasyStatement::open()->with(RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::ISSUE_ID . ' is null');
 
         $this->exludeAlreadyTransfered($conditions);
 
+        $query = $this->buildBaseTimeEntryQuery(false);
+        $this->excludePseudoUsers($query, $conditions);
+        $this->includeOnlyTransferedProjects($conditions);
+
         $timeEntries = $this->redmine()->run(
-            $this->buildBaseTimeEntryQuery() .
+            $query .
             ' WHERE ' . $conditions->sql(),
             ...$conditions->values()
         );
@@ -148,21 +196,27 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
     {
         $artifactId = $this->getArtifactId(
             $timeEntry[RedmineTimeEntryColumnEnum::PROJECT_ID],
-            $timeEntry[RedmineTimeEntryColumnEnum::ISSUE_ID] ?: null
+            $timeEntry[RedmineTimeEntryColumnEnum::ISSUE_ID] ?? null
         );
 
-        $this->timeDao->addTime(
+        $timeId = $this->timeDao->addTime(
             $this->refRepo->getTuleapUserId($timeEntry[RedmineTimeEntryColumnEnum::USER_ID]),
             $artifactId,
             $timeEntry[RedmineTimeEntryColumnEnum::SPENT_ON],
             $this->convertSpentTime($timeEntry[RedmineTimeEntryColumnEnum::HOURS]),
-            $timeEntry[RedmineTimeEntryColumnEnum::COMMENTS]
+            $timeEntry[RedmineTimeEntryColumnEnum::COMMENTS] ?: ''
         );
+
+        if (!$timeId) {
+            throw new Exception(sprintf('Failed to transfer time entry #%d', $timeEntry[RedmineTimeEntryColumnEnum::ID]));
+        }
+
+        $this->markAsTransfered($timeEntry[RedmineTimeEntryColumnEnum::ID], $timeId);
     }
 
     private function getArtifactId(int $projectId, ?int $issueId): int
     {
-        if ($issueId === null) {
+        if (!$issueId) {
             return $this->getProjectArtifactId($projectId);
         }
 
@@ -195,23 +249,36 @@ class TransferTimeEntriesCommand extends GenericTransferCommand
 
         $artifactId = $this->generateProjectArtifactId($tuleapProjectId);
 
-        $artifact = $this->artifactDao->searchById($artifactId);
-
-        if ($artifact === false) {
-            $this->artifactDao->createWithId(
-                $artifactId,
-                $tracker->id,
-                0,
-                time(),
-                0
-             );
+        if ($this->artifactDao->searchById($artifactId)->count()) {
+            return $artifactId;
         }
+
+        // you can't see those artifacts in site, because they don't have changeset
+        // note: it doesn't break numbering despite big numbers generated in generateProjectArtifactId
+        $this->artifactDao->createWithId(
+            $artifactId,
+            $tracker->id,
+            0,
+            time(),
+            0
+        );
 
         return $artifactId;
     }
 
     private function generateProjectArtifactId(int $projectId): int
     {
-        return 1 . str_pad((string) $projectId, 10, '0', STR_PAD_LEFT);
+        // INT(11) can count up to 2147483648 (10 numbers)
+        return 2 . str_pad((string) $projectId, 9, '0', STR_PAD_LEFT);
+    }
+
+    private function includeOnlyTransferedProjects(EasyStatement $conditions)
+    {
+        $redmineProjectIds = $this->refRepo->redmineIdsOfType(EntityTypeEnum::PROJECT());
+        if (!$redmineProjectIds) {
+            throw new Exception('Transfer some project first');
+        }
+
+        $conditions->andIn(RedmineTableEnum::TIME_ENTRIES . '.' . RedmineTimeEntryColumnEnum::PROJECT_ID . ' in (?*)', $redmineProjectIds);
     }
 }
