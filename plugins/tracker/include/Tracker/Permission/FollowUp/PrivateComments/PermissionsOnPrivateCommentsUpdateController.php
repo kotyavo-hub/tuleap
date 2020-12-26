@@ -64,7 +64,6 @@ class PermissionsOnPrivateCommentsUpdateController implements DispatchableWithRe
      */
     public function process(HTTPRequest $request, BaseLayout $layout, array $variables)
     {
-
         $tracker = $this->tracker_factory->getTrackerById($variables['id']);
         if (! $tracker || ! $tracker->isActive()) {
             throw new NotFoundException();
@@ -76,18 +75,30 @@ class PermissionsOnPrivateCommentsUpdateController implements DispatchableWithRe
         if ($tracker->userIsAdmin($request->getCurrentUser())) {
             if ($request->exist('update')) {
                 if ($request->exist('ugroups') && is_array($request->get('ugroups'))) {
-                    if ($this->tracker_private_comments_dao->updateUgroupsByTrackerId(
+                    $this->tracker_private_comments_dao->updateUgroupsByTrackerId(
                         $tracker->getId(),
                         $request->get('ugroups')
-                    )) {
-                        echo 'true';
-                    }
+                    );
+                    $layout->addFeedback(
+                        \Feedback::INFO,
+                        $GLOBALS['Language']->getText('project_admin_userperms', 'perm_upd')
+                    );
+                    $layout->redirect('/plugins/tracker/permissions/follow-up/' . $tracker->getId());
+                }
+                else {
+                    $this->tracker_private_comments_dao->deleteUgroupsByTrackerId($tracker->getId());
                     $layout->addFeedback(\Feedback::INFO, $GLOBALS['Language']->getText('project_admin_userperms', 'perm_upd'));
                     $layout->redirect('/plugins/tracker/permissions/follow-up/' . $tracker->getId());
                 }
             }
         } else {
-            $layout->addFeedback(\Feedback::ERROR, dgettext('tuleap-tracker', 'Access denied. You don\'t have permissions to perform this action.'));
+            $layout->addFeedback(
+                \Feedback::ERROR,
+                dgettext(
+                    'tuleap-tracker',
+                    'Access denied. You don\'t have permissions to perform this action.'
+                )
+            );
             $layout->redirect(TRACKER_BASE_URL . '/?tracker=' . $tracker->getId());
         }
     }

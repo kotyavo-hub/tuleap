@@ -183,8 +183,7 @@ class Tracker_Artifact_Changeset_Comment
                 id="tracker_artifact_followup_comment_private_' . $this->changeset->getId() . '"
                 name="tracker_artifact_followup_comment_private_' . $this->changeset->getId() . '"
                 value="' . $this->private . '" />';
-            $private_modifier_css = ($this->private) ? ' comment__private' : '';
-            $html        .= '<div class="tracker_artifact_followup_comment_body' . $private_modifier_css . '">';
+            $html        .= '<div class="tracker_artifact_followup_comment_body">';
             if ($this->parent_id && ! trim($this->body)) {
                 $html .= '<em>' . dgettext('tuleap-tracker', 'Comment has been cleared') . '</em>';
             } elseif ($this->bodyFormat === self::MARKDOWN_COMMENT) {

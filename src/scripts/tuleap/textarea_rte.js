@@ -51,11 +51,28 @@ tuleap.textarea.RTE = Class.create(window.codendi.RTE, {
                 class: "checkbox",
             });
             private_container.appendChild(checkbox);
-            checkbox.addEventListener("change", () => element.classList.toggle("comment__private"));
+            checkbox.addEventListener("change", () => {
+                element.classList.toggle("comment-body__private");
+
+                /*const rte_body = window.CKEDITOR.instances[element.id].document.getBody().$;*/
+
+                // if (window.CKEDITOR.instances[this.element.id] && this.options.privateFormat) {
+                //     rte_body.style.backgroundColor = "#dcede4";
+                // } else if (window.CKEDITOR.instances[this.element.id] && !this.options.privateFormat) {
+                //     rte_body.style.backgroundColor = "";
+                // }
+            });
         }
 
         if (this.options.privateFormat) {
-            element.classList.toggle("comment__private");
+            element.classList.toggle("comment-body__private");
+            // const rte_body = window.CKEDITOR.instances[element.id].document.getBody().$;
+            //
+            // // if (window.CKEDITOR.instances[this.element.id] && this.options.privateFormat) {
+            // //     rte_body.style.backgroundColor = "#dcede4";
+            // // } else if (window.CKEDITOR.instances[this.element.id] && !this.options.privateFormat) {
+            // //     rte_body.style.backgroundColor = "";
+            // // }
         }
 
         var div_clear = Builder.node("div", { class: "rte_clear" });
@@ -155,11 +172,24 @@ tuleap.textarea.RTE = Class.create(window.codendi.RTE, {
         var id = this.element.id;
 
         $super();
+
         (function recordRequiredAttribute() {
             if ($(id).hasAttribute("required")) {
                 $(id).removeAttribute("required");
                 $(id).writeAttribute("data-required", true);
             }
         })();
+
+        if (window.CKEDITOR.instances[this.element.id]) {
+            window.CKEDITOR.instances[this.element.id].addCss("body { background-color: red; }");
+        }
+
+        //const rte_body = window.CKEDITOR.instances[this.element.id].document.getBody().$;
+
+        // if (window.CKEDITOR.instances[this.element.id] && this.options.privateFormat) {
+        //     rte_body.style.backgroundColor = "#dcede4";
+        // } else if (window.CKEDITOR.instances[this.element.id] && !this.options.privateFormat) {
+        //     rte_body.style.backgroundColor = "";
+        // }
     },
 });

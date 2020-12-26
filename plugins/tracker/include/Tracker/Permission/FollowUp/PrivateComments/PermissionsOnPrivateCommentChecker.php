@@ -20,25 +20,80 @@
 
 namespace Tuleap\Tracker\Permission\FollowUp\PrivateComments;
 
+use JetBrains\PhpStorm\Pure;
 use PFUser;
 use Tracker;
 use Tuleap\Tracker\Permission\FollowUp\PrivateComments\TrackerPrivateCommentsDao;
 
 class PermissionsOnPrivateCommentChecker
 {
-    public static function checkPermission(PFUser $user, Tracker $tracker): bool
+
+    /** @var $instance null */
+    private static $instance = null;
+
+    /** @var $hashPrivateAccessGroups array */
+    private $hashPrivateAccessGroups = [];
+
+    private function __construct() {}
+
+    private function __clone() {}
+
+    private function __wakeup() {}
+
+    public static function getInstance()
     {
+        if (self::$instance === null) {
+            return self::$instance = new static();
+        } else {
+            return self::$instance;
+        }
+    }
+
+    public function checkPermission(PFUser $user, Tracker $tracker): bool
+    {
+        $user_ugroups = $user->getUgroups($tracker->getProject()->getID(), []);
+        $private_comments_groups = $this->getPrivateCommentsGroups($tracker);
+
+        if (!count($private_comments_groups)) {
+            return false;
+        }
+
         if ($user->isAdmin($tracker->getProject()->getID())) {
             return true;
         }
-        $dao = new TrackerPrivateCommentsDao();
-        $user_ugroups = $user->getUgroups($tracker->getProject()->getID(), []);
-        $private_comments_groups = array_column($dao->getAccessUgroupsByTrackerId($tracker->getId()), 'ugroup_id');
-        foreach ($user_ugroups as $user_ugroup) {
-            if (in_array($user_ugroup, $private_comments_groups)) {
-                return true;
-            }
+
+        return count(array_intersect($user_ugroups, $private_comments_groups)) > 0;
+    }
+
+    private function getPrivateCommentsGroups(Tracker $tracker): array
+    {
+        if ($hashGroup = $this->getHashGroup()) {
+            return $hashGroup;
         }
-        return false;
+
+        $private_comments_dao = $this->getTrackerPrivateCommentsDao();
+
+        $private_comments_groups = array_column(
+            $private_comments_dao->getAccessUgroupsByTrackerId($tracker->getId()), 'ugroup_id'
+        );
+
+        $this->setHashGroup($private_comments_groups);
+
+        return $private_comments_groups;
+    }
+
+    private function getHashGroup(): array
+    {
+        return $this->hashPrivateAccessGroups;
+    }
+
+    private function setHashGroup($privateCommentsGroups): void
+    {
+        $this->hashPrivateAccessGroups = $privateCommentsGroups;
+    }
+
+    private function getTrackerPrivateCommentsDao(): TrackerPrivateCommentsDao
+    {
+        return new TrackerPrivateCommentsDao();
     }
 }

@@ -30,7 +30,7 @@ class Tracker_Artifact_Changeset_CommentDao extends DataAccessObject
     public function searchLastVersion($changeset_id, bool $access_private = false)
     {
         $changeset_id = $this->da->escapeInt($changeset_id);
-        $private_where = (!$access_private) ? 'AND private = 0' : '';
+        $private_where = $access_private ? '' : 'AND private = 0';
         $sql = "SELECT * FROM $this->table_name
                 WHERE changeset_id = $changeset_id $private_where
                 ORDER BY id DESC
@@ -41,7 +41,6 @@ class Tracker_Artifact_Changeset_CommentDao extends DataAccessObject
     public function searchLastVersionForArtifact($artifact_id, bool $private = false)
     {
         $artifact_id = $this->da->escapeInt($artifact_id);
-        //$private = $this->da->escapeInt($private);
         $sql = "SELECT comment_v1.*
                 FROM tracker_changeset AS changeset
                   LEFT JOIN tracker_changeset_comment AS comment_v1 ON (comment_v1.changeset_id = changeset.id)
@@ -51,9 +50,7 @@ class Tracker_Artifact_Changeset_CommentDao extends DataAccessObject
                 AND comment_v1.id IS NOT NULL";
         if (!$private) {
             $sql .= " AND comment_v1.private = 0";
-            $test = !$private;
         }
-        //$sql .= ($private) ?: " AND comment_v1.private = 0";
         $result = [];
         foreach ($this->retrieve($sql) as $row) {
             $result[$row['changeset_id']] = $row;

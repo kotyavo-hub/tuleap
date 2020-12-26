@@ -24,7 +24,7 @@ use Tuleap\DB\DataAccessObject;
 
 class TrackerPrivateCommentsDao extends DataAccessObject
 {
-    public function updateUgroupsByTrackerId($tracker_id, $ugroups_ids) : bool
+    public function updateUgroupsByTrackerId(?int $tracker_id, array $ugroups_ids) : bool
     {
         $data_insert = [];
         foreach ($ugroups_ids as $ugroup_id){
@@ -33,19 +33,32 @@ class TrackerPrivateCommentsDao extends DataAccessObject
                 'ugroup_id'  => $ugroup_id
             ];
         }
-
         unset ($ugroup_id);
 
         $this->getDB()->beginTransaction();
         try {
-            $this->getDB()->delete('tracker_private_comment_permission', ['tracker_id' => $tracker_id]);
-            $this->getDB()->insertMany('tracker_private_comment_permission', $data_insert);
+            $this->getDB()->delete(
+                'tracker_private_comment_permission',
+                ['tracker_id' => $tracker_id]
+            );
+            $this->getDB()->insertMany(
+                'tracker_private_comment_permission',
+                $data_insert
+            );
         } catch (\PDOException $exception) {
             $this->getDB()->rollBack();
             return false;
         }
         $this->getDB()->commit();
         return true;
+    }
+
+    public function deleteUgroupsByTrackerId($tracker_id): void
+    {
+        $this->getDB()->delete(
+            'tracker_private_comment_permission',
+            ['tracker_id' => $tracker_id]
+        );
     }
 
     public function getAccessUgroupsByTrackerId($tracker_id)

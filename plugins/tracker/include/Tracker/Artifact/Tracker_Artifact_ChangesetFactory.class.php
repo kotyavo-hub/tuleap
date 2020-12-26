@@ -151,7 +151,7 @@ class Tracker_Artifact_ChangesetFactory
      */
     public function getFullChangesetsForArtifact(Tracker_Artifact $artifact, PFUser $user)
     {
-        $access_private_comments = PermissionsOnPrivateCommentChecker::checkPermission($user, $artifact->getTracker());
+        $access_private_comments = PermissionsOnPrivateCommentChecker::getInstance()->checkPermission($user, $artifact->getTracker());
         $changeset_values_cache  = $this->changeset_value_dao->searchByArtifactId($artifact->getId());
         $comments_cache          = $this->changeset_comment_dao->searchLastVersionForArtifact($artifact->getId(), $access_private_comments);
 

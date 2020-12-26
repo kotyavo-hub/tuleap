@@ -411,6 +411,10 @@ class Tracker_Artifact_Changeset extends Tracker_Artifact_Followup_Item
             $classnames .= ' tracker_artifact_followup-with_comment ';
         }
 
+        if ($comment && ! $comment->hasEmptyBody() && $comment->private){
+            $classnames .= ' tracker_artifact_followup-with_private_comment ';
+        }
+
         if ($this->submitted_by && $this->submitted_by < 100) {
             $classnames .= ' tracker_artifact_followup-by_system_user ';
         }
@@ -488,7 +492,7 @@ class Tracker_Artifact_Changeset extends Tracker_Artifact_Followup_Item
      *
      * @return void
      */
-    public function updateComment($body, $user, $comment_format, $timestamp, bool $private = false)
+    public function updateComment($body, $user, $comment_format, $timestamp, ?bool $private = null)
     {
         if ($this->updateCommentWithoutNotification($body, $user, $comment_format, $timestamp, $private)) {
             $this->executePostCreationActions();
@@ -557,7 +561,7 @@ class Tracker_Artifact_Changeset extends Tracker_Artifact_Followup_Item
         $user = $this->getUserManager()->getCurrentUser();
         $tracker = $this->getArtifact()->getTracker();
 
-        $access_private_comments = PermissionsOnPrivateCommentChecker::checkPermission($user, $tracker);
+        $access_private_comments = PermissionsOnPrivateCommentChecker::getInstance()->checkPermission($user, $tracker);
 
         if ($row = $this->getCommentDao()->searchLastVersion($this->id, $access_private_comments)->getRow()) {
             $this->latest_comment = new Tracker_Artifact_Changeset_Comment(

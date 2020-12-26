@@ -109,7 +109,7 @@ class Tracker_Artifact_View_Edit extends Tracker_Artifact_View_View
         $tracker      = $this->artifact->getTracker();
         $invert_order = $this->user->getPreference(self::USER_PREFERENCE_INVERT_ORDER . '_' . $tracker->getId()) == false;
 
-        if (PermissionsOnPrivateCommentChecker::checkPermission($this->user, $tracker)) {
+        if (PermissionsOnPrivateCommentChecker::getInstance()->checkPermission($this->user, $tracker)) {
             $html .= "<script>window.tuleap.private_access = true;</script>";
         }
 
