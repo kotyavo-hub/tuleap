@@ -27,9 +27,11 @@ use Tuleap\Tracker\Permission\FollowUp\PrivateComments\TrackerPrivateCommentsDao
 
 class PermissionsOnPrivateCommentChecker
 {
-
     /** @var $instance null */
     private static $instance = null;
+
+    /** @var $private_comments_dao null|TrackerPrivateCommentsDao */
+    private $private_comments_dao = null;
 
     /** @var $hashPrivateAccessGroups array */
     private $hashPrivateAccessGroups = [];
@@ -54,7 +56,7 @@ class PermissionsOnPrivateCommentChecker
         $user_ugroups = $user->getUgroups($tracker->getProject()->getID(), []);
         $private_comments_groups = $this->getPrivateCommentsGroups($tracker);
 
-        if (!count($private_comments_groups)) {
+        if (!count($private_comments_groups) > 0) {
             return false;
         }
 
@@ -71,10 +73,13 @@ class PermissionsOnPrivateCommentChecker
             return $hashGroup;
         }
 
-        $private_comments_dao = $this->getTrackerPrivateCommentsDao();
+        if (!$this->private_comments_dao instanceof TrackerPrivateCommentsDao) {
+            $this->private_comments_dao = $this->getTrackerPrivateCommentsDao();
+        }
 
         $private_comments_groups = array_column(
-            $private_comments_dao->getAccessUgroupsByTrackerId($tracker->getId()), 'ugroup_id'
+            $this->private_comments_dao->getAccessUgroupsByTrackerId($tracker->getId()),
+            'ugroup_id'
         );
 
         $this->setHashGroup($private_comments_groups);

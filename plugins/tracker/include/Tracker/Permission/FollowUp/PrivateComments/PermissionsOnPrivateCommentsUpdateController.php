@@ -22,8 +22,11 @@ declare(strict_types=1);
 
 namespace Tuleap\Tracker\Permission\FollowUp\PrivateComments;
 
+use Feedback;
 use HTTPRequest;
+use Tracker;
 use Tracker_FormElementFactory;
+use TrackerFactory;
 use Tuleap\Layout\BaseLayout;
 use Tuleap\Request\DispatchableWithRequest;
 use Tuleap\Request\ForbiddenException;
@@ -35,19 +38,15 @@ class PermissionsOnPrivateCommentsUpdateController implements DispatchableWithRe
 {
     public const URL = '/permissions/private-comments';
 
-    /**
-     * @var \TrackerFactory
-     */
+    /** @var TrackerFactory */
     private $tracker_factory;
 
-    /**
-     * @var TrackerPrivateCommentsDao
-     */
+    /** @var TrackerPrivateCommentsDao */
     private $tracker_private_comments_dao;
 
 
     public function __construct(
-        \TrackerFactory $tracker_factory,
+        TrackerFactory $tracker_factory,
         TrackerPrivateCommentsDao $tracker_private_comments_dao
     ) {
         $this->tracker_factory = $tracker_factory;
@@ -80,20 +79,22 @@ class PermissionsOnPrivateCommentsUpdateController implements DispatchableWithRe
                         $request->get('ugroups')
                     );
                     $layout->addFeedback(
-                        \Feedback::INFO,
+                        Feedback::INFO,
                         $GLOBALS['Language']->getText('project_admin_userperms', 'perm_upd')
                     );
                     $layout->redirect('/plugins/tracker/permissions/follow-up/' . $tracker->getId());
-                }
-                else {
+                } else {
                     $this->tracker_private_comments_dao->deleteUgroupsByTrackerId($tracker->getId());
-                    $layout->addFeedback(\Feedback::INFO, $GLOBALS['Language']->getText('project_admin_userperms', 'perm_upd'));
+                    $layout->addFeedback(
+                        Feedback::INFO,
+                        $GLOBALS['Language']->getText('project_admin_userperms', 'perm_upd')
+                    );
                     $layout->redirect('/plugins/tracker/permissions/follow-up/' . $tracker->getId());
                 }
             }
         } else {
             $layout->addFeedback(
-                \Feedback::ERROR,
+                Feedback::ERROR,
                 dgettext(
                     'tuleap-tracker',
                     'Access denied. You don\'t have permissions to perform this action.'
@@ -103,7 +104,7 @@ class PermissionsOnPrivateCommentsUpdateController implements DispatchableWithRe
         }
     }
 
-    public static function getUrl(\Tracker $tracker)
+    public static function getUrl(Tracker $tracker)
     {
         return TRACKER_BASE_URL . self::URL . '/' . $tracker->getId();
     }
