@@ -114,6 +114,7 @@ DROP TABLE IF EXISTS tracker_fileinfo_temporary;
 DROP TABLE IF EXISTS tracker_reminder_notified_roles;
 DROP TABLE IF EXISTS tracker_report_config;
 DROP TABLE IF EXISTS tracker_widget_renderer;
+DROP TABLE IF EXISTS tracker_private_comment_permission;
 
 DELETE FROM permissions WHERE permission_type LIKE 'PLUGIN_TRACKER_%';
 DELETE FROM permissions_values WHERE permission_type LIKE 'PLUGIN_TRACKER_%';

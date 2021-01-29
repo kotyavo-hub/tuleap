@@ -77,6 +77,8 @@ class PermissionsOnPrivateCommentChecker
             $this->private_comments_dao = $this->getTrackerPrivateCommentsDao();
         }
 
+        $test = $this->private_comments_dao->getAccessUgroupsByTrackerId($tracker->getId());
+
         $private_comments_groups = array_column(
             $this->private_comments_dao->getAccessUgroupsByTrackerId($tracker->getId()),
             'ugroup_id'
