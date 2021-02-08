@@ -128,7 +128,8 @@ class FollowUpController implements DispatchableWithRequest
         return $ugroup_list;
     }
 
-    private function getPrivateCommentsUGroup(Tracker $tracker){
+    private function getPrivateCommentsUGroup(Tracker $tracker)
+    {
         $dao = new TrackerPrivateCommentsDao();
         $private_comments_groups = $dao->getAccessUgroupsByTrackerId($tracker->getId());
         return $private_comments_groups;

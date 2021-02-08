@@ -169,7 +169,7 @@ use Tuleap\Tracker\Notifications\UgroupsToNotifyDao;
 use Tuleap\Tracker\Notifications\UgroupsToNotifyUpdater;
 use Tuleap\Tracker\Notifications\UnsubscribersNotificationDAO;
 use Tuleap\Tracker\Notifications\UserNotificationOnlyStatusChangeDAO;
-use Tuleap\Tracker\Notifications\UsersToNotifyDao;;
+use Tuleap\Tracker\Notifications\UsersToNotifyDao;
 use Tuleap\Tracker\Permission\Fields\ByField\ByFieldController;
 use Tuleap\Tracker\Permission\Fields\ByGroup\ByGroupController;
 use Tuleap\Tracker\Permission\Fields\PermissionsOnFieldsUpdateController;

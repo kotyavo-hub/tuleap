@@ -74,7 +74,7 @@ final class PermissionsOnPrivateCommentCheckerTest extends TestCase
             ->andReturn(PermissionsOnPrivateCommentChecker::getInstance());
     }
 
-    function testItUniqSingleton(): void
+    function testItIsUniqSingleton(): void
     {
         $this->premission_private_comment_checker->shouldReceive('getInstance')
             ->andReturn(PermissionsOnPrivateCommentChecker::getInstance());
@@ -84,22 +84,5 @@ final class PermissionsOnPrivateCommentCheckerTest extends TestCase
 
         $this->assertInstanceOf(PermissionsOnPrivateCommentChecker::class, $fCall );
         $this->assertSame($fCall, $sCall);
-    }
-
-    function TestItgetPrivateCommentsGroups(): void
-    {
-        $this->private_comment_dao->shouldReceive('getAccessUgroupsByTrackerId')
-            ->andReturn([
-                [
-                    'id' => 125,
-                    'tracker_id' => 2,
-                    'ugroup_id' => 1
-                ],
-                [
-                    'id' => 134,
-                    'tracker_id' => 2,
-                    'ugroup_id' => 3
-                ]
-            ]);
     }
 }
